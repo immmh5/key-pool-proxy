@@ -1,25 +1,22 @@
 # Render Blueprint — key-pool-proxy
 # Deploy: connect this repo on Render, or use a Dashboard deeplink from render-deploy.
-# The SQLite database lives on a persistent disk so keys + usage survive deploys.
+# Free plan: ephemeral filesystem (no persistent disk). SQLite lives in ./data and
+# resets on every redeploy, so DB_PATH keeps the working-dir default.
 services:
   - type: web
     name: key-pool-proxy
     runtime: node
     region: oregon
-    plan: starter
+    plan: free
     buildCommand: npm ci
     startCommand: node server.js
     autoDeploy: true
     healthCheckPath: /health
-    disk:
-      name: kpool-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: PORT
         value: 3000
       - key: DB_PATH
-        value: /data/kpool.db
+        value: ./data/kpool.db
       # Point this at your OpenAI-compatible provider, e.g. https://api.example.com/v1
       - key: UPSTREAM_BASE_URL
         value: https://api.openai.com/v1
