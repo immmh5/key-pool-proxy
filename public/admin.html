@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Key Pool Proxy · Admin</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1f2530; --border:#30363d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#2f81f7; --green:#3fb950;
+    --yellow:#d29922; --red:#f85149; --orange:#db6d28; --purple:#a371f7;
+    --radius:8px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent)}
+  header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:10;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  .spacer{flex:1}
+  input,select,textarea,button{font:inherit}
+  input,select,textarea{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  button{cursor:pointer;border:1px solid var(--border);background:var(--panel2);color:var(--text);border-radius:var(--radius);padding:7px 12px}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.danger{color:var(--red);border-color:var(--red)}
+  .muted{color:var(--muted)}
+  #auth{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .main{padding:20px;max-width:1200px;margin:0 auto}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+  .card .num{font-size:22px;font-weight:700}
+  .card .lbl{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  .card.g .num{color:var(--green)} .card.y .num{color:var(--yellow)} .card.r .num{color:var(--red)} .card.p .num{color:var(--purple)} .card.b .num{color:var(--accent)}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+  th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;position:sticky;top:62px;z-index:5}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#1a2230}
+  .tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:600}
+  .tag.active{background:#12271e;color:var(--green);border:1px solid var(--green)}
+  .tag.exhausted{background:#2d1d12;color:var(--orange);border:1px solid var(--orange)}
+  .tag.cooldown{background:#27210f;color:var(--yellow);border:1px solid var(--yellow)}
+  .tag.disabled{background:#2d1a1a;color:var(--red);border:1px solid var(--red)}
+  .tag.no_quota{background:#271a30;color:var(--purple);border:1px solid var(--purple)}
+  .bar{width:90px;height:6px;background:#262c36;border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle}
+  .bar>i{display:block;height:100%;background:var(--green)}
+  .bar.warn>i{background:var(--yellow)} .bar.danger>i{background:var(--red)}
+  .op{background:none;border:none;color:var(--accent);padding:3px 6px;font-size:12px}
+  .op.danger{color:var(--red)}
+  .op:hover{text-decoration:underline}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
+  .modal-bg.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;width:460px;max-width:92vw;max-height:88vh;overflow:auto}
+  .modal h3{margin-top:0}
+  .modal label{display:block;margin:10px 0 4px;color:var(--muted);font-size:12px}
+  .modal input,.modal select,.modal textarea{width:100%}
+  .modal .row{display:flex;gap:8px}
+  .modal .row>*{flex:1}
+  .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;resize:vertical;min-height:140px}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12px}
+  .toast{position:fixed;bottom:18px;right:18px;background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;display:none;max-width:360px;z-index:200}
+  .toast.err{border-color:var(--red);color:var(--red)}
+  .toast.ok{border-color:var(--green);color:var(--green)}
+  .pager{display:flex;gap:8px;align-items:center;margin-top:12px;justify-content:flex-end}
+  .empty{padding:30px;text-align:center;color:var(--muted)}
+  .progress-wrap{width:100px}
+  .progress{font-size:11px;color:var(--muted);margin-top:2px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔑 Key Pool Proxy · Admin</h1>
+  <span class="muted" id="today"></span>
+  <div class="spacer"></div>
+  <div id="auth">
+    <input type="password" id="token" placeholder="ADMIN_TOKEN" style="width:220px" autocomplete="off">
+    <button id="saveToken" class="primary">Save</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="cards" id="cards"></div>
+
+  <div class="toolbar">
+    <input id="q" placeholder="Search alias / key…" style="width:220px">
+    <select id="status">
+      <option value="">All statuses</option>
+      <option value="active">active</option>
+      <option value="exhausted">exhausted</option>
+      <option value="cooldown">cooldown</option>
+      <option value="disabled">disabled</option>
+      <option value="no_quota">no_quota</option>
+    </select>
+    <button id="addBtn" class="primary">＋ Add keys</button>
+    <button id="reloadBtn">⟳ Refresh</button>
+    <span class="spacer"></span>
+    <button id="resetAllBtn" class="danger">Reset all usage</button>
+  </div>
+
+  <table id="tbl">
+    <thead><tr>
+      <th data-k="id">ID</th>
+      <th data-k="alias">Alias</th>
+      <th data-k="key">Key</th>
+      <th data-k="status">Status</th>
+      <th data-k="percent">Usage</th>
+      <th data-k="used_tokens">Used</th>
+      <th data-k="fail_count">Fails</th>
+      <th>Last</th>
+      <th>Actions</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div id="empty" class="empty" style="display:none">No keys yet — click “＋ Add keys”.</div>
+
+  <div class="pager">
+    <button id="prevBtn">‹ Prev</button>
+    <span class="muted" id="pageInfo"></span>
+    <button id="nextBtn">Next ›</button>
+  </div>
+</div>
+
+<!-- Add modal -->
+<div class="modal-bg" id="addModal">
+  <div class="modal">
+    <h3>Add keys</h3>
+    <p class="muted" style="margin-top:0">Paste keys — one per line — or JSON <code>{"keys":[...]}</code>. Duplicates are skipped (counted as updated).</p>
+    <textarea id="addText" placeholder="sk-abc123...&#10;sk-def456...&#10;{&quot;keys&quot;:[{&quot;key&quot;:&quot;sk-...&quot;,&quot;alias&quot;:&quot;prod&quot;,&quot;quota&quot;:1000000}]}"></textarea>
+    <div class="actions">
+      <button onclick="closeModal('addModal')">Cancel</button>
+      <button class="primary" onclick="doAdd()">Add to pool</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div class="modal-bg" id="editModal">
+  <div class="modal">
+    <h3>Edit key <span class="muted" id="editId"></span></h3>
+    <label>Alias</label><input id="eAlias">
+    <label>Status</label>
+    <select id="eStatus">
+      <option>active</option><option>exhausted</option><option>cooldown</option><option>disabled</option>
+    </select>
+    <label>Quota (tokens / day)</label><input id="eQuota" type="number" min="1">
+    <div class="actions">
+      <button onclick="closeModal('editModal')">Cancel</button>
+      <button class="primary" onclick="doEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unified static token modal -->
+<div class="modal-bg" id="staticModal">
+  <div class="modal">
+    <h3>Unified static token</h3>
+    <p class="muted" style="margin:0 0 6px">When set, <b>all</b> requests use this single token. It stays fixed and is only changed <b>manually</b> — never auto-rotated. Pool keys are ignored while a static token is active (kept safe in the DB).</p>
+    <label>Static token (paste the full key)</label>
+    <input id="staticKeyInput" type="password" placeholder="sk-…" autocomplete="off">
+    <div class="actions">
+      <button onclick="closeModal('staticModal')">Cancel</button>
+      <button class="primary" onclick="doSetStatic()">Set token</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN_KEY = 'kpool_admin_token';
+let token = localStorage.getItem(TOKEN_KEY) || '';
+let keys = [], total = 0, offset = 0, limit = 100, status = '', q = '';
+let sortKey = 'id', sortDir = 1;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg, ok = true) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (ok ? 'ok' : 'err');
+  t.style.display = 'block';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.style.display = 'none', 3500);
+}
+
+async function api(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (opts.body && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  if (token) headers['x-admin-token'] = token;
+  const r = await fetch('/admin/api' + path, { ...opts, headers });
+  let data = null;
+  try { data = await r.json(); } catch { /* empty */ }
+  if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
+  return data;
+}
+
+function needToken() {
+  if (token) return true;
+  toast('Enter ADMIN_TOKEN first', false);
+  return false;
+}
+
+async function loadStats() {
+  if (!needToken()) return;
+  try {
+    const [s, st] = await Promise.all([api('/stats'), api('/static').catch(() => null)]);
+    $('today').textContent = 'window: ' + s.today;
+    renderCards(s, st);
+  } catch (e) { toast(e.message, false); }
+}
+
+function renderCards(s, st) {
+  const k = s.keys || {};
+  const fmt = (n) => (n ?? 0).toLocaleString();
+  const pct = (k.quota_total || k.used_today) ? Math.round((k.used_today / Math.max(k.quota_total, 1)) * 10000) / 100 : 0;
+  const defs = [
+    ['Total keys', fmt(k.total), 'b'],
+    ['Active', fmt(k.active), 'g'],
+    ['Exhausted', fmt(k.exhausted), 'y'],
+    ['Cooldown/Disabled', fmt(k.paused), 'r'],
+    ['Used today (tokens)', fmt(k.used_today), 'p'],
+    ['Requests served', fmt(s.requests_served), 'b'],
+    ['Pool used', pct + '%', pct > 90 ? 'r' : (pct > 70 ? 'y' : 'g')],
+  ];
+  let html = defs.map(([l, v, c]) =>
+    `<div class="card ${c}"><div class="lbl">${l}</div><div class="num">${v}</div></div>`).join('');
+  if (st) {
+    const on = !!st.enabled;
+    html = `<div class="card ${on ? 'g' : 'b'}" style="grid-column:1/-1">
+      <div class="lbl">Unified token · ${on ? 'ENABLED — single static key' : 'OFF — pool rotation'}</div>
+      <div class="num" style="font-size:20px">${on ? esc(st.masked) : 'no static token'}</div>
+      <div class="muted" style="margin:2px 0 8px">${on ? 'static · changed only manually · pool keys ignored' : 'set a unified token to pin one key / stop auto-rotation'}</div>
+      <button class="primary" id="setStaticBtn">${on ? 'Change token' : 'Set token'}</button>
+      ${on ? '<button class="danger" id="clearStaticBtn">Clear → pool again</button>' : ''}
+    </div>` + html;
+  }
+  $('cards').innerHTML = html;
+  const set = $('setStaticBtn'); if (set) set.onclick = () => openStaticModal();
+  const clr = $('clearStaticBtn'); if (clr) clr.onclick = clearStaticToken;
+}
+
+function openStaticModal() {
+  $('staticKeyInput').value = '';
+  openModal('staticModal');
+  $('staticKeyInput').focus();
+}
+async function doSetStatic() {
+  const key = $('staticKeyInput').value.trim();
+  if (!key) return toast('Paste the token first', false);
+  try {
+    await api('/static', { method: 'POST', body: JSON.stringify({ key }) });
+    toast('Static token saved — now in use');
+    closeModal('staticModal'); loadStats(); loadKeys();
+  } catch (e) { toast(e.message, false); }
+}
+async function clearStaticToken() {
+  if (!confirm('Clear the unified token and switch back to pool rotation?')) return;
+  try {
+    await api('/static', { method: 'DELETE' });
+    toast('Static token cleared — pool mode');
+    loadStats(); loadKeys();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function loadKeys() {
+  if (!needToken()) return;
+  try {
+    const params = new URLSearchParams({ limit, offset, status, q });
+    const d = await api('/keys?' + params);
+    keys = d.keys || [];
+    total = d.total || 0;
+    renderRows();
+  } catch (e) { toast(e.message, false); }
+}
+
+const tagHtml = (st) => {
+  const safe = /^[a-z_]+$/.test(st) ? st : 'unknown';
+  return `<span class="tag ${safe}">${safe}</span>`;
+};
+
+function renderRows() {
+  const tb = $('rows');
+  if (!keys.length) {
+    tb.innerHTML = '';
+    $('empty').style.display = 'block';
+    $('pageInfo').textContent = '0 / ' + total;
+    return;
+  }
+  $('empty').style.display = 'none';
+  tb.innerHTML = keys.map((k) => {
+    const pct = k.percent || 0;
+    const barCls = pct >= 95 ? 'danger' : pct >= 75 ? 'warn' : '';
+    const last = k.last_error
+      ? `<span class="muted" title="${esc(k.last_error)}">${esc((k.last_error + '').slice(0, 18))}${(k.last_error + '').length > 18 ? '…' : ''}</span>`
+      : (k.last_used_at ? esc(k.last_used_at.slice(0, 16).replace('T', ' ')) : '—');
+    const s = k.status || '';
+    const cd = (s === 'cooldown' && k.cooldown_until) ? ` · <span class="muted">until ${new Date(k.cooldown_until).toLocaleTimeString()}</span>` : '';
+    return `<tr>
+      <td class="muted">${k.id}</td>
+      <td title="${esc(k.alias)}">${esc(k.alias) || '—'}</td>
+      <td><code title="${esc(k.key_sha)}">${esc(k.key)}</code></td>
+      <td>${tagHtml(s)}${cd}</td>
+      <td><div class="progress-wrap"><div class="bar ${barCls}"><i style="width:${Math.min(pct, 100)}%"></i></div><div class="progress">${pct}%</div></div></td>
+      <td>${Number(k.used_tokens || 0).toLocaleString()} / ${Number(k.quota_tokens || 0).toLocaleString()}</td>
+      <td>${k.fail_count || 0}</td>
+      <td>${last}</td>
+      <td>
+        <button class="op" onclick="openEdit(${k.id})">edit</button>
+        <button class="op" onclick="topUp(${k.id})">topup</button>
+        <button class="op" onclick="resetKey(${k.id})">reset</button>
+        <button class="op" onclick="testKey(${k.id})">test</button>
+        <button class="op danger" onclick="delKey(${k.id})">del</button>
+      </td>
+    </tr>`;
+  }).join('');
+  $('pageInfo').textContent = `${offset + 1}–${Math.min(offset + limit, total)} / ${total}`;
+}
+
+function openModal(id) { $(id).classList.add('show'); }
+function closeModal(id) { $(id).classList.remove('show'); }
+
+function openAdd() { $('addText').value = ''; openModal('addModal'); }
+async function doAdd() {
+  if (!needToken()) return;
+  const text = $('addText').value.trim();
+  if (!text) return toast('Nothing to add', false);
+  try {
+    let body;
+    if (text.startsWith('{') || text.startsWith('[')) { body = JSON.parse(text); }
+    else body = text; // one per line
+    const d = await api('/keys', { method: 'POST', body: JSON.stringify(body) });
+    toast(`added ${d.added} · updated ${d.updated} · invalid ${d.invalid}`);
+    closeModal('addModal'); loadStats(); loadKeys();
+  } catch (e) { toast((e.message + ' — keys must be valid strings, JSON object/array, or text lines'), false); }
+}
+
+function openEdit(id) {
+  const k = keys.find((x) => x.id === id);
+  if (!k) return;
+  $('editId').textContent = '#' + id;
+  $('eAlias').value = k.alias || '';
+  $('eStatus').value = ['active', 'exhausted', 'cooldown', 'disabled'].includes(k.status) ? k.status : 'active';
+  $('eQuota').value = k.quota_tokens || '';
+  openModal('editModal');
+}
+async function doEdit() {
+  const id = +$('editId').textContent.slice(1);
+  const body = {
+    alias: $('eAlias').value.trim(),
+    status: $('eStatus').value,
+    quota: parseInt($('eQuota').value, 10) || undefined,
+  };
+  try { await api('/keys/' + id, { method: 'PATCH', body: JSON.stringify(body) }); toast('Saved'); closeModal('editModal'); loadStats(); loadKeys(); }
+  catch (e) { toast(e.message, false); }
+}
+
+async function topUp(id) {
+  const v = prompt(`Top up quota for key #${id} (tokens):`, '100000');
+  if (!v) return;
+  const n = parseInt(v, 10);
+  if (!n || n <= 0) return toast('Invalid token count', false);
+  api('/keys/' + id + '/topup', { method: 'POST', body: JSON.stringify({ tokens: n }) }).then(() => { toast('Topped up'); loadStats(); loadKeys(); }).catch((e) => toast(e.message, false));
+}
+async function resetKey(id) {
+  if (!confirm(`Reset 24h usage for key #${id}?`)) return;
+  api('/keys/' + id + '/reset', { method: 'POST' }).then(() => { toast('Reset'); loadStats(); loadKeys(); }).catch((e) => toast(e.message, false));
+}
+async function delKey(id) {
+  if (!confirm(`Delete key #${id} permanently?`)) return;
+  api('/keys/' + id, { method: 'DELETE' }).then((d) => { toast('deleted ' + d.deleted); loadStats(); loadKeys(); }).catch((e) => toast(e.message, false));
+}
+async function testKey(id) {
+  toast('Testing against upstream…');
+  try {
+    const r = await api('/test', { method: 'POST', body: JSON.stringify({ id }) });
+    if (!r.ok) toast(`#${id}: HTTP ${r.status} — ${esc(r.raw || r.error || '').slice(0, 80)}`, false);
+    else toast(`#${id}: ${r.status} OK — ${r.models}`);
+  } catch (e) { toast(e.message, false); }
+}
+
+$('resetAllBtn').onclick = async () => {
+  if (!confirm('Reset usage for ALL keys (new 24h window)? This is automatic daily, only run when needed.')) return;
+  api('/reset-all', { method: 'POST' }).then(() => { toast('All usage reset'); loadStats(); loadKeys(); }).catch((e) => toast(e.message, false));
+};
+
+function next() { if (offset + limit < total) { offset += limit; loadKeys(); } }
+function prev() { if (offset > 0) { offset = Math.max(0, offset - limit); loadKeys(); } }
+$('prevBtn').onclick = prev; $('nextBtn').onclick = next;
+
+let debounce;
+$('q').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => { offset = 0; q = $('q').value.trim(); loadKeys(); }, 300); });
+$('status').addEventListener('change', () => { offset = 0; status = $('status').value; loadKeys(); });
+$('addBtn').onclick = openAdd;
+$('reloadBtn').onclick = () => { loadStats(); loadKeys(); };
+
+document.querySelectorAll('th[data-k]').forEach((th) => th.addEventListener('click', () => {
+  const k = th.dataset.k;
+  sortKeys(k);
+}));
+function sortKeys(k) {
+  if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = 1; }
+  keys.sort((a, b) => {
+    let av = a[k], bv = b[k];
+    if (typeof av === 'string') { av = av.toLowerCase(); bv = (bv || '').toLowerCase(); }
+    return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir;
+  });
+  renderRows();
+}
+
+$('saveToken').onclick = () => {
+  token = $('token').value.trim();
+  localStorage.setItem(TOKEN_KEY, token);
+  loadStats(); loadKeys();
+};
+
+// auto-login if a token was stored
+if (token) loadStats();
+
+// initial paint (no token yet → show placeholders)
+loadKeys().catch(() => {});
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "key-pool-proxy",
+  "version": "1.0.0",
+  "description": "Self-hosted API Load Balancer / Key Rotator — pool of OpenAI-compatible API keys, automatic rotation on quota exhaustion, usage accounting from response `usage` object.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "reset": "node scripts/reset-db.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  },
+  "license": "MIT",
+  "allowScripts": {
+    "better-sqlite3@*": true
+  }
+}

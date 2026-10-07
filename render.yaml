@@ -1,0 +1,43 @@
+# Render Blueprint — key-pool-proxy
+# Deploy: connect this repo on Render, or use a Dashboard deeplink from render-deploy.
+# The SQLite database lives on a persistent disk so keys + usage survive deploys.
+services:
+  - type: web
+    name: key-pool-proxy
+    runtime: node
+    region: oregon
+    plan: starter
+    buildCommand: npm ci
+    startCommand: node server.js
+    autoDeploy: true
+    healthCheckPath: /health
+    disk:
+      name: kpool-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: DB_PATH
+        value: /data/kpool.db
+      # Point this at your OpenAI-compatible provider, e.g. https://api.example.com/v1
+      - key: UPSTREAM_BASE_URL
+        value: https://api.openai.com/v1
+        sync: false
+      # Auth token your apps must send (Bearer). Set to a strong random value.
+      - key: GATEWAY_TOKEN
+        generateValue: true
+        sync: false
+      # Auth token guarding the /admin API + UI. Set to a strong random value.
+      - key: ADMIN_TOKEN
+        generateValue: true
+        sync: false
+      # Per-key daily token quota (tokens / 24h).
+      - key: DEFAULT_KEY_QUOTA
+        value: 1000000
+        sync: false
+      # Optional AES-256-GCM secret to encrypt keys at rest. If unset, keys are
+      # stored plaintext (still hashed for lookup). Set once and never change it.
+      - key: KEY_ENC_SECRET
+        generateValue: true
+        sync: false
