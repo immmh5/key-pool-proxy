@@ -335,16 +335,33 @@ app.use('/v1', async (req, res) => {
   }
 
   // GET /v1/models → the union of every enabled upstream's whitelisted models.
+  // If every whitelist is empty (fresh DB, new upstream not probed yet), fall
+  // back to a short-lived live probe so clients still see the catalog instead
+  // of an empty list.
   if (req.method === 'GET' && /^\/models\/?$/.test(req.url)) {
     const rows = db.listAllEnabledModels();
+    if (rows.length) {
+      return res.json({
+        object: 'list',
+        data: rows.map((m) => ({
+          id: m.id,
+          object: 'model',
+          created: 0,
+          owned_by: 'key-pool-proxy',
+          upstreams: String(m.owners || '').split(',').filter(Boolean),
+        })),
+      });
+    }
+    const probed = await liveModelUnion();
     return res.json({
       object: 'list',
-      data: rows.map((m) => ({
-        id: m.id,
+      data: [...probed].map(([id, owners]) => ({
+        id,
         object: 'model',
         created: 0,
         owned_by: 'key-pool-proxy',
-        upstreams: String(m.owners || '').split(',').filter(Boolean),
+        upstreams: owners,
+        live: true,
       })),
     });
   }
@@ -414,6 +431,7 @@ admin.post('/upstreams', (req, res) => {
   const u = db.addUpstream({ name, baseUrl, priority, enabled: enabled === false ? 0 : 1, staticKey: staticKey || '' });
   if (!u) return res.status(400).json({ error: 'invalid upstream (check name/baseUrl)' });
   if (Array.isArray(models) && models.length) db.setModels(u.id, models);
+  backup.schedulePush(db, 1500);
   res.json({ ...u, static_key: u.static_key ? '[static token set]' : '' });
 });
 
@@ -435,52 +453,91 @@ admin.patch('/upstreams/:id', (req, res) => {
   const staticKey = b.staticKey ?? b.static_key;
   const u = db.updateUpstream(parseInt(req.params.id, 10), { name, baseUrl, priority, enabled, staticKey });
   if (!u) return res.status(404).json({ error: 'not found' });
+  backup.schedulePush(db, 1500);
   res.json({ ...u, static_key: u.static_key ? '[static token set]' : '' });
 });
 
 admin.delete('/upstreams/:id', (req, res) => {
-  res.json({ deleted: db.deleteUpstream(parseInt(req.params.id, 10)) });
+  const n = db.deleteUpstream(parseInt(req.params.id, 10));
+  if (n) backup.schedulePush(db, 1500);
+  res.json({ deleted: n });
 });
 
 admin.put('/upstreams/:id/models', (req, res) => {
   const { models } = req.body || {};
   if (!Array.isArray(models) && typeof models !== 'string') return res.status(400).json({ error: 'models array (or comma string) required' });
-  res.json(db.setModels(parseInt(req.params.id, 10), models));
+  const out = db.setModels(parseInt(req.params.id, 10), models);
+  backup.schedulePush(db, 1500);
+  res.json(out);
 });
 
 admin.post('/upstreams/:id/models/:model/toggle', (req, res) => {
   const enabled = req.body?.enabled === false ? 0 : 1;
-  res.json(db.setModelEnabled(parseInt(req.params.id, 10), decodeURIComponent(req.params.model), enabled));
+  const out = db.setModelEnabled(parseInt(req.params.id, 10), decodeURIComponent(req.params.model), enabled);
+  backup.schedulePush(db, 1500);
+  res.json(out);
 });
 
 // Probe an upstream's GET /v1/models and return its model ids (read-only).
 // Uses the upstream's static key if set, otherwise its least-used pool key.
+// On a 401 with the static key it retries with a pool key — a static key that
+// expired shouldn't permanently hide the catalog.
 async function probeUpstreamModels(u) {
   if (!u) throw Object.assign(new Error('not found'), { code: 'not_found' });
-  let secret = null;
+  const secrets = new Set();
   if (u.static_key) {
     const plain = kc.decrypt(u.static_key);
-    if (plain) secret = plain;
+    if (plain) secrets.add(plain);
   }
-  if (!secret) {
-    const picked = db.pickKey(u.id);
-    if (picked) secret = db.rawKey(picked);
+  const picked = db.pickKey(u.id);
+  if (picked) {
+    const pk = db.rawKey(picked);
+    if (pk) secrets.add(pk);
   }
-  if (!secret) throw Object.assign(new Error('no key available for this upstream to probe with'), { code: 'no_key' });
+  if (!secrets.size) throw Object.assign(new Error('no key available for this upstream to probe with'), { code: 'no_key' });
   const base = u.base_url.replace(/\/+$/, '');
-  const r = await fetch(base + '/models', {
-    headers: { authorization: `Bearer ${secret}` },
-    signal: AbortSignal.timeout(20000),
-  });
-  const body = await r.text();
-  if (!r.ok) {
+  let lastErr = null;
+  for (const secret of secrets) {
+    const r = await fetch(base + '/models', {
+      headers: { authorization: `Bearer ${secret}` },
+      signal: AbortSignal.timeout(20000),
+    });
+    const body = await r.text();
+    if (r.ok) {
+      const data = JSON.parse(body).data || [];
+      return data.map((m) => m.id).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    }
     const err = new Error('upstream responded ' + r.status);
     err.code = 'upstream_' + r.status;
     err.raw = body.slice(0, 300);
-    throw err;
+    lastErr = err;
+    if (r.status === 401 || r.status === 403) {
+      // static key gone stale? try the next credential (e.g. a pool key)
+      continue;
+    }
+    break; // other errors won't be fixed by a different key
   }
-  const data = JSON.parse(body).data || [];
-  return data.map((m) => m.id).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  throw lastErr;
+}
+
+// Live probe of every enabled upstream, memoized for a short while. Used only
+// as the /v1/models fallback when no whitelist is configured yet.
+let liveUnionCache = { at: 0, data: null };
+const LIVE_UNION_TTL_MS = 60_000;
+async function liveModelUnion() {
+  const now = Date.now();
+  if (liveUnionCache.data && now - liveUnionCache.at < LIVE_UNION_TTL_MS) return liveUnionCache.data;
+  const out = new Map();
+  for (const u of db.listUpstreams().filter((x) => x.enabled)) {
+    try {
+      for (const id of await probeUpstreamModels(u)) {
+        if (!out.has(id)) out.set(id, []);
+        out.get(id).push(u.name);
+      }
+    } catch (e) { /* one dead upstream shouldn't blank the whole catalog */ }
+  }
+  liveUnionCache = { at: now, data: out };
+  return out;
 }
 
 // read-only discovery: list what the upstream offers vs. what's whitelisted
@@ -510,6 +567,7 @@ admin.post('/upstreams/:id/fetch-models', async (req, res) => {
   try {
     const ids = await probeUpstreamModels(u);
     const kept = db.setModels(u.id, ids);
+    backup.schedulePush(db, 1500);
     res.json({ fetched: ids.length, models: kept });
   } catch (e) {
     res.status(502).json({ error: 'fetch failed: ' + (e.cause?.code || e.message), raw: e.raw || undefined });
@@ -538,6 +596,7 @@ admin.post('/keys', async (req, res) => {
   const { added, updated } = db.addKeysBulk(items.map((i) => ({
     key: i.key, alias: i.alias || '', quota: parseInt(i.quota, 10) || undefined,
   })), undefined, upstreamId);
+  if (added.length || updated.length) backup.schedulePush(db, 2500); // bulk import: slightly longer debounce
   res.json({ added, updated, invalid: items.length - added.length - updated.length });
 });
 
@@ -549,11 +608,14 @@ admin.get('/keys/:id', (req, res) => {
 
 admin.patch('/keys/:id', (req, res) => {  const row = db.updateKey(parseInt(req.params.id, 10), req.body);
   if (!row) return res.status(404).json({ error: 'not found' });
+  backup.schedulePush(db, 1000);
   res.json(publicRow(row));
 });
 
 admin.delete('/keys/:id', (req, res) => {
-  res.json({ deleted: db.deleteKey(parseInt(req.params.id, 10)) });
+  const n = db.deleteKey(parseInt(req.params.id, 10));
+  if (n) backup.schedulePush(db, 1000);
+  res.json({ deleted: n });
 });
 
 admin.post('/keys/:id/reset', (req, res) => {
@@ -610,11 +672,26 @@ app.post('/admin/api/static', express.json(), (req, res) => {
   if (!adminOk(req)) return res.status(401).json({ error: 'ADMIN_TOKEN required' });
   const key = String(req.body?.key || '').trim();
   if (!key) return res.status(400).json({ error: 'Provide {key}' });
+  backup.schedulePush(db, 1000);
   res.json(db.setStaticKey(key));
 });
 app.delete('/admin/api/static', (_req, res) => {
   if (!adminOk(_req)) return res.status(401).json({ error: 'ADMIN_TOKEN required' });
+  backup.schedulePush(db, 1000);
   res.json(db.removeStaticKey());
+});
+
+// ── backup controls ─────────────────────────────────────────────────
+// GET  → status (target, last push, encryption on/off)
+// POST → force a snapshot push right now (button in the admin UI)
+app.get('/admin/api/backup', (_req, res) => {
+  if (!adminOk(_req)) return res.status(401).json({ error: 'ADMIN_TOKEN required' });
+  res.json(backup.status());
+});
+app.post('/admin/api/backup', express.json(), async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'ADMIN_TOKEN required' });
+  const r = await backup.pushNow(db, 'manual admin trigger');
+  res.status(r.ok ? 200 : 500).json(r);
 });
 
 // ── 404 ────────────────────────────────────────────────────────────
@@ -631,14 +708,62 @@ process.on('unhandledRejection', (e) => console.error('[key-pool-proxy] unhandle
 
 // ── boot ───────────────────────────────────────────────────────────
 db.init();
-app.listen(PORT, () => {
-  console.log(`[key-pool-proxy] listening on :${PORT}`);
-  const ups = db.listUpstreams();
-  console.log(`[key-pool-proxy] upstreams     : ${ups.length ? ups.map((u) => u.name + '(' + u.key_count + 'k,' + u.model_count + 'm)').join(' ') : 'NONE — set UPSTREAMS or UPSTREAM_BASE_URL'}`);
-  console.log(`[key-pool-proxy] gateway auth  : ${GATEWAY_TOKEN ? 'enabled' : 'DISABLED (open — set GATEWAY_TOKEN)'}`);
-  console.log(`[key-pool-proxy] admin auth    : ${ADMIN_TOKEN ? 'enabled' : 'DISABLED (open — set ADMIN_TOKEN)'}`);
-  console.log(`[key-pool-proxy] keys in pool  : ${db.countAll()}`);
-  console.log(`[key-pool-proxy] encryption    : ${require('./crypto').enabled() ? 'AES-256-GCM' : 'plaintext (set KEY_ENC_SECRET)'}`);
-  const sts = db.staticStatus();
-  console.log(`[key-pool-proxy] upstream mode : ${sts.enabled ? 'STATIC — single unified token (manual only, no rotation)' : 'pool rotation'}`);
-});
+const backup = require('./backup');
+
+// On a wiped disk, upstreams come back with empty whitelists. Pre-fetch each
+// one's catalog so /v1/models isn't empty on a fresh boot. Fresh installs with
+// an empty DB get the same treatment.
+async function autoDiscoverModels() {
+  for (const u of db.listUpstreams().filter((x) => x.enabled)) {
+    if (db.listModels(u.id, true).length) continue;
+    try {
+      const ids = await probeUpstreamModels(u);
+      if (ids.length) {
+        db.setModels(u.id, ids);
+        console.log(`[key-pool-proxy] auto-whitelist : ${u.name} +${ids.length} models (boot discovery)`);
+      }
+    } catch (e) {
+      console.warn(`[key-pool-proxy] auto-whitelist : ${u.name} failed — ${e.code || e.message}`);
+    }
+  }
+}
+
+(async () => {
+  // Render's free plan wipes ./data on every redeploy. Restore the pool from the
+  // GitHub snapshot BEFORE listening so the very first request sees a warm pool.
+  try {
+    const r = await backup.restoreIfEmpty(db);
+    console.log('[key-pool-proxy] snapshot boot :', r.ran ? `RESTORED ${r.keys} keys / ${r.upstreams} upstreams` : `skipped — ${r.reason}`);
+  } catch (e) {
+    console.error('[key-pool-proxy] snapshot boot : restore failed —', e && e.message);
+  }
+
+  // Bootstrap whitelists for any upstream whose list is empty (fresh deploy or
+  // a newly added upstream). Runs after the restore so it only fills gaps.
+  await autoDiscoverModels();
+
+  app.listen(PORT, () => {
+    console.log(`[key-pool-proxy] listening on :${PORT}`);
+    const ups = db.listUpstreams();
+    console.log(`[key-pool-proxy] upstreams     : ${ups.length ? ups.map((u) => u.name + '(' + u.key_count + 'k,' + u.model_count + 'm)').join(' ') : 'NONE — set UPSTREAMS or UPSTREAM_BASE_URL'}`);
+    console.log(`[key-pool-proxy] gateway auth  : ${GATEWAY_TOKEN ? 'enabled' : 'DISABLED (open — set GATEWAY_TOKEN)'}`);
+    console.log(`[key-pool-proxy] admin auth    : ${ADMIN_TOKEN ? 'enabled' : 'DISABLED (open — set ADMIN_TOKEN)'}`);
+    console.log(`[key-pool-proxy] keys in pool  : ${db.countAll()}`);
+    console.log(`[key-pool-proxy] encryption    : ${require('./crypto').enabled() ? 'AES-256-GCM' : 'plaintext (set KEY_ENC_SECRET)'}`);
+    const sts = db.staticStatus();
+    console.log(`[key-pool-proxy] upstream mode : ${sts.enabled ? 'STATIC — single unified token (manual only, no rotation)' : 'pool rotation'}`);
+    const bs = backup.status();
+    console.log(`[key-pool-proxy] persistence   : ${bs.enabled ? `GitHub → ${bs.target} (${bs.encryption ? 'encrypted' : 'UNENCRYPTED'})` : 'DISABLED (set SNAPSHOT_TOKEN + SNAPSHOT_REPO)'}`);
+  });
+})();
+
+// Render sends SIGTERM before recycling the instance. The ephemeral disk dies
+// with it, so this is our last chance to leave a current snapshot behind.
+function shutdown(signal) {
+  console.log(`[key-pool-proxy] ${signal} received — flushing snapshot`);
+  try { backup.flushSync(db); } catch (e) { console.error('[key-pool-proxy] shutdown flush failed:', e && e.message); }
+  process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+

@@ -462,6 +462,14 @@ function topUp(id, tokens) {
 }
 
 // ── admin helpers ──────────────────────────────────────────────────
+function listKeysRaw({ upstreamId = null } = {}) {
+  // Snapshot export needs the *raw* rows (still-encrypted key column), unlike
+  // listKeys which masks. Do not expose over HTTP.
+  const sql = 'SELECT * FROM keys';
+  if (upstreamId == null) return db.prepare(sql).all();
+  return db.prepare(`${sql} WHERE upstream_id = ?`).all(parseInt(upstreamId, 10));
+}
+
 function listKeys({ status, q, limit = 500, offset = 0, upstreamId = null } = {}) {
   let sql = 'SELECT * FROM keys WHERE 1=1';
   const args = [];
@@ -592,7 +600,7 @@ function staticStatus() {
 
 module.exports = {
   init, addKey, addKeysBulk, pickKey, recordSuccess, recordFailure, recordCode, topUp,
-  listKeys, getRow, toPublic, updateKey, deleteKey, resetUsage, stats,
+  listKeys, listKeysRaw, getRow, toPublic, updateKey, deleteKey, resetUsage, stats,
   bumpRequestCount, countAll, maintenance, rawKey, maskKey, sha256, dbFile,
   getStaticKey, setStaticKey, removeStaticKey, staticStatus,
   listUpstreams, getUpstream, getUpstreamByName, addUpstream, updateUpstream,

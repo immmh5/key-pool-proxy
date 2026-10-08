@@ -12,9 +12,9 @@
     --radius:8px;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"Segoe UI",Roboto,"Noto Sans Arabic",Helvetica,Arial,sans-serif}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"Segoe UI",Roboto,"Noto Sans Arabic",Helvetica,Arial,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   a{color:var(--accent)}
-  header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:10;flex-wrap:wrap}
+  header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg);z-index:10;flex-wrap:wrap;flex:none}
   header h1{font-size:16px;margin:0;font-weight:600}
   .spacer{flex:1}
   input,select,textarea,button{font:inherit}
@@ -27,7 +27,7 @@
   button.sm{padding:4px 10px;font-size:12px}
   .muted{color:var(--muted)}
   #auth{margin-left:auto;display:flex;gap:8px;align-items:center}
-  .main{padding:20px;max-width:1200px;margin:0 auto}
+  .main{padding:20px;max-width:1200px;margin:0 auto;flex:1;min-height:0;overflow-y:auto;width:100%}
   .tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
   .tabs button{background:none;border:none;border-bottom:2px solid transparent;border-radius:0;padding:10px 16px;color:var(--muted);font-weight:600}
   .tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
@@ -37,10 +37,10 @@
   .card .lbl{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
   .card.g .num{color:var(--green)} .card.y .num{color:var(--yellow)} .card.r .num{color:var(--red)} .card.p .num{color:var(--purple)} .card.b .num{color:var(--accent)}
   .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
-  .tbl-scroll{overflow-x:auto;margin-bottom:12px}
-  table{width:100%;min-width:760px;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .tbl-scroll{overflow:auto;margin-bottom:12px;max-height:calc(100vh - 200px);border:1px solid var(--border);border-radius:var(--radius)}
+  table{width:100%;min-width:760px;border-collapse:collapse;background:var(--panel)}
   th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
-  th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;position:sticky;top:62px;z-index:5}
+  th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;position:sticky;top:0;z-index:5}
   tr:last-child td{border-bottom:none}
   tr:hover td{background:#1a2230}
   .tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:600}
@@ -95,6 +95,7 @@
   <div class="tabs">
     <button id="tabKeys" class="on">المفاتيح</button>
     <button id="tabUps">الخوادم (Upstreams)</button>
+    <button id="tabBackup">النسخ الاحتياطي</button>
   </div>
 
   <!-- ═══════════ KEYS VIEW ═══════════ -->
@@ -168,6 +169,28 @@
     </table>
     </div>
     <div id="upsEmpty" class="empty" style="display:none">لا توجد خوادم بعد — اضغط «＋ إضافة خادم» (أو عيّن متغير البيئة <code>UPSTREAMS</code>).</div>
+  </div>
+
+  <!-- ═══════════ BACKUP VIEW ═══════════ -->
+  <div id="backupView" style="display:none">
+    <div class="hint">
+      نظام الملفات على Render مجاني ومؤقت — تُمسَأ المفاتيح مع كل إعادة نشر.
+      هذه اللوحة تنسخ المجموعة (مشفّرة AES-256-GCM) إلى مستودع GitHub،
+      وتستعيدها تلقائياً عند الإقلاع إذا كانت قاعدة البيانات فارغة.
+      متغيرات البيئة: <code>SNAPSHOT_TOKEN</code>، <code>SNAPSHOT_REPO</code> (أو <code>SNAPSHOT_GIST_ID</code>)،
+      <code>SNAPSHOT_SECRET</code> (تشفير — يُستخدم <code>KEY_ENC_SECRET</code> إن لم يُضَبَط).
+    </div>
+    <div class="cards" style="margin-bottom:16px">
+      <div class="card"><div class="lbl">الحالة</div><div class="num" id="bkState">—</div></div>
+      <div class="card"><div class="lbl">الوجهة</div><div class="num" id="bkTarget" style="font-size:15px;word-break:break-all">—</div></div>
+      <div class="card"><div class="lbl">التشفير</div><div class="num" id="bkEnc">—</div></div>
+      <div class="card"><div class="lbl">آخر رفع</div><div class="num" id="bkLast" style="font-size:15px">—</div></div>
+    </div>
+    <div class="toolbar">
+      <button id="bkPushBtn" class="primary">⬆ رفع نسخة الآن</button>
+      <button id="bkReloadBtn">⟳ تحديث الحالة</button>
+    </div>
+    <div class="muted" id="bkMsg"></div>
   </div>
 </div>
 
@@ -367,13 +390,50 @@ function needToken() {
 // ── tabs ──
 $('tabKeys').onclick = () => switchTab('keys');
 $('tabUps').onclick = () => switchTab('ups');
+$('tabBackup').onclick = () => switchTab('backup');
 function switchTab(which) {
   $('tabKeys').classList.toggle('on', which === 'keys');
   $('tabUps').classList.toggle('on', which === 'ups');
+  $('tabBackup').classList.toggle('on', which === 'backup');
   $('keysView').style.display = which === 'keys' ? 'block' : 'none';
   $('upsView').style.display = which === 'ups' ? 'block' : 'none';
+  $('backupView').style.display = which === 'backup' ? 'block' : 'none';
   if (which === 'ups') loadUpstreams();
+  if (which === 'backup') loadBackup();
 }
+
+// ── backup status ──
+async function loadBackup() {
+  if (!needToken()) return;
+  try {
+    const b = await api('/backup');
+    $('bkState').textContent = b.enabled ? '✅ مُفعَّل' : '⛔ معطَّل';
+    $('bkState').className = 'num ' + (b.enabled ? 'g' : 'r');
+    $('bkTarget').textContent = b.target || 'غير مُعد (SNAPSHOT_REPO / SNAPSHOT_GIST_ID)';
+    $('bkEnc').textContent = b.encryption ? '✅ AES-256-GCM' : '⛔ غير مشفّر';
+    $('bkEnc').className = 'num ' + (b.encryption ? 'g' : 'r');
+    $('bkLast').textContent = b.last_push_at
+      ? `${new Date(b.last_push_at).toLocaleString()} · ${b.last_push_status}`
+      : (b.last_push_status && b.last_push_status !== 'none' ? b.last_push_status : 'لم يُرفَع بعد');
+    $('bkMsg').textContent = b.enabled
+      ? 'الاستعادة التلقائية عند الإقلاع مُفعَّلة (تحدث فقط إذا كانت قاعدة البيانات فارغة).'
+      : 'لن تُستعاد المفاتيح بعد إعادة النشر. عيّن SNAPSHOT_TOKEN + SNAPSHOT_REPO في متغيرات البيئة.';
+    $('bkPushBtn').disabled = !b.enabled;
+  } catch (e) { toast(e.message, false); }
+}
+
+$('bkReloadBtn').onclick = loadBackup;
+$('bkPushBtn').onclick = async () => {
+  if (!needToken()) return;
+  $('bkMsg').textContent = '⏳ جارٍ الرفع…';
+  try {
+    const r = await api('/backup', { method: 'POST' });
+    $('bkMsg').textContent = r.ok
+      ? (r.changed ? '✅ تم رفع نسخة جديدة' : '✅ لا تغيير — النسخة محدّثة')
+      : '❌ فشل الرفع: ' + (r.error || r.reason || 'غير معروف');
+    loadBackup();
+  } catch (e) { $('bkMsg').textContent = '❌ ' + e.message; }
+};
 
 // ── stats + cards ──
 async function loadStats() {

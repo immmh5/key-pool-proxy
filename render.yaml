@@ -38,3 +38,24 @@ services:
       - key: KEY_ENC_SECRET
         generateValue: true
         sync: false
+
+      # ── GitHub-backed snapshots (survive the ephemeral filesystem) ──
+      # On every free-plan redeploy ./data is wiped. These push an encrypted
+      # snapshot of the DB to GitHub after writes and restore it on boot when
+      # the DB has zero keys. All four are optional; leave them out to skip.
+      - key: SNAPSHOT_TOKEN
+        value: ""   # GitHub PAT (repo scope, or gist scope with GIST_ID)
+        sync: false
+      # Where to store it — EITHER "owner/repo" (file data/key-pool.snapshot.json,
+      # needs repo scope) OR leave empty and set SNAPSHOT_GIST_ID instead.
+      - key: SNAPSHOT_REPO
+        value: ""   # e.g. your-name/key-pool-proxy
+        sync: false
+      # Alternative target: an existing gist id (needs only gist scope).
+      - key: SNAPSHOT_GIST_ID
+        value: ""
+        sync: false
+      # AES-256-GCM secret for the snapshot payload. Falls back to KEY_ENC_SECRET.
+      - key: SNAPSHOT_SECRET
+        generateValue: true
+        sync: false
