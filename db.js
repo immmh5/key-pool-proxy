@@ -29,8 +29,49 @@ function nowMs() {
   return Date.now();
 }
 
-function nowMs() {
-  return Date.now();
+function seedFromEnv() {
+  // Build the seed list: legacy UPSTREAM_BASE_URL first, then a multi-upstream
+  // UPSTREAMS JSON array (which wins on name collisions). The ephemeral free-plan
+  // filesystem wipes the DB on every redeploy, so env seeding is the only way to
+  // keep the upstream set reproducible across deploys.
+  const byName = new Map();
+  const legacy = (process.env.UPSTREAM_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (legacy) byName.set('default', { name: 'default', base_url: legacy, priority: 0, models: null, static_key: process.env.STATIC_UPSTREAM_KEY || '' });
+
+  const raw = (process.env.UPSTREAMS || '').trim();
+  if (raw) {
+    let arr = null;
+    try { arr = JSON.parse(raw); } catch { arr = null; }
+    if (Array.isArray(arr)) {
+      for (const u of arr) {
+        const baseUrl = (u.base_url || u.baseUrl || '').trim().replace(/\/+$/, '');
+        if (!u || !baseUrl || !u.name) continue;
+        byName.set(String(u.name), {
+          name: String(u.name),
+          base_url: baseUrl,
+          priority: parseInt(u.priority, 10) || 0,
+          models: Array.isArray(u.models) ? u.models.map((m) => String(m)) : null,
+          static_key: u.static_key || u.api_key || '',
+        });
+      }
+    }
+  }
+  if (!byName.size) return null;
+
+  for (const u of [...byName.values()].sort((a, b) => a.priority - b.priority)) {
+    const ex = db.prepare('SELECT id FROM upstreams WHERE name = ?').get(u.name);
+    if (ex) continue;
+    const info = db.prepare(`
+      INSERT INTO upstreams (name, base_url, priority, static_key)
+      VALUES (?, ?, ?, ?)
+    `).run(u.name, u.base_url, u.priority, u.static_key ? kc.encrypt(u.static_key) : '');
+    if (u.models && u.models.length) {
+      const ins = db.prepare('INSERT OR IGNORE INTO upstream_models (upstream_id, model, enabled) VALUES (?, ?, 1)');
+      const txn = db.transaction((ms) => ms.forEach((m) => ins.run(info.lastInsertRowid, m)));
+      txn(u.models);
+    }
+  }
+  return db.prepare('SELECT * FROM upstreams ORDER BY priority ASC, id ASC').all();
 }
 
 function init(overridePath) {
@@ -57,14 +98,46 @@ function init(overridePath) {
       last_used_at      TEXT,
       last_code         INTEGER,
       last_error        TEXT,
+      upstream_id       INTEGER,                 -- which upstream this key serves (NULL = legacy default)
       created_at        TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_keys_sel ON keys(status, window_date, used_tokens);
+    CREATE INDEX IF NOT EXISTS idx_keys_upstream ON keys(upstream_id, status, used_tokens);
     CREATE TABLE IF NOT EXISTS meta (
       k TEXT PRIMARY KEY,
       v TEXT
     );
+    CREATE TABLE IF NOT EXISTS upstreams (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL UNIQUE,          -- url-safe slug, used in /v1/<name>/...
+      base_url    TEXT NOT NULL,
+      enabled     INTEGER NOT NULL DEFAULT 1,
+      priority    INTEGER NOT NULL DEFAULT 0,    -- lower = tried first on failover
+      static_key  TEXT NOT NULL DEFAULT '',      -- AES-encrypted; '' = rotate the pool instead
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS upstream_models (
+      upstream_id INTEGER NOT NULL,
+      model       TEXT NOT NULL,
+      enabled     INTEGER NOT NULL DEFAULT 1,    -- 0 = hidden from /v1/models and excluded from routing
+      PRIMARY KEY (upstream_id, model)
+    );
   `);
+
+  // Migrate pre-multi-upstream databases: existing keys belong to the default upstream.
+  const seeded = seedFromEnv();
+  const def = db.prepare("SELECT id FROM upstreams WHERE name = 'default'").get();
+  if (def) db.prepare('UPDATE keys SET upstream_id = ? WHERE upstream_id IS NULL').run(def.id);
+
+  // Migrate the legacy global static token onto the default upstream.
+  const legacyStatic = db.prepare("SELECT v FROM meta WHERE k = 'static_key'").get();
+  if (legacyStatic && legacyStatic.v && def) {
+    const cur = db.prepare('SELECT static_key FROM upstreams WHERE id = ?').get(def.id);
+    if (cur && !cur.static_key) {
+      db.prepare('UPDATE upstreams SET static_key = ? WHERE id = ?').run(legacyStatic.v, def.id);
+    }
+    db.prepare("DELETE FROM meta WHERE k = 'static_key'").run();
+  }
   return db;
 }
 
@@ -85,6 +158,7 @@ function toPublic(row) {
     key: maskKey(plain),            // masked, safe to show in the UI
     key_sha: row.key_sha.slice(0, 12) + '…',
     alias: row.alias,
+    upstream_id: row.upstream_id,
     quota_tokens: row.quota_tokens,
     used_tokens: row.used_tokens,
     remaining: Math.max(0, row.quota_tokens - row.used_tokens),
@@ -101,7 +175,7 @@ function toPublic(row) {
 }
 
 // ── add one key (upsert by plaintext hash: re-import bumps quota/alias) ──
-function addKey({ key, alias = '', quota = DEFAULT_QUOTA }) {
+function addKey({ key, alias = '', quota = DEFAULT_QUOTA, upstreamId = null }) {
   key = String(key || '').trim();
   if (!key) return null;
   const sha = sha256(key);
@@ -115,33 +189,166 @@ function addKey({ key, alias = '', quota = DEFAULT_QUOTA }) {
              quota_tokens = ?,
              used_tokens = CASE WHEN window_date <> ? THEN 0 ELSE used_tokens END,
              window_date = ?,
-             last_used_at = ?
+             last_used_at = ?,
+             upstream_id = COALESCE(?, upstream_id)
        WHERE id = ?
-    `).run(alias, alias, quota, today(), today(), now, existing.id);
+    `).run(alias, alias, quota, today(), today(), now, upstreamId, existing.id);
     return db.prepare('SELECT * FROM keys WHERE id = ?').get(existing.id);
   }
   const info = db.prepare(`
-    INSERT INTO keys (key, key_sha, alias, quota_tokens, window_date, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(stored, sha, alias, quota, today(), now);
+    INSERT INTO keys (key, key_sha, alias, quota_tokens, window_date, upstream_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(stored, sha, alias, quota, today(), upstreamId, now);
   return db.prepare('SELECT * FROM keys WHERE id = ?').get(info.lastInsertRowid);
 }
 
 /** Bulk add — one transaction. Returns {added, updated}. */
-function addKeysBulk(list, defaultQuota = DEFAULT_QUOTA) {
+function addKeysBulk(list, defaultQuota = DEFAULT_QUOTA, upstreamId = null) {
   const added = [], updated = [];
   const txn = db.transaction((rows) => {
     for (const r of rows) {
       const key = String(r.key || '').trim();
       if (!key) continue;
       const ex = db.prepare('SELECT id FROM keys WHERE key_sha = ?').get(sha256(key));
-      const row = addKey({ key, alias: r.alias || '', quota: parseInt(r.quota, 10) || defaultQuota });
+      const row = addKey({ key, alias: r.alias || '', quota: parseInt(r.quota, 10) || defaultQuota, upstreamId });
       if (!row) continue;
       (ex ? updated : added).push(row.id);
     }
   });
   txn(list);
   return { added, updated };
+}
+
+// ── upstream registry ───────────────────────────────────────────────
+// A row here is one OpenAI-compatible backend. `name` is the url-safe slug used
+// for explicit routing (`/v1/<name>/chat/completions`), `priority` controls the
+// failover order across upstreams that all serve the same model, and `static_key`
+// is an optional never-rotate token (the "key per upstream" mode).
+function listUpstreams() {
+  return db.prepare(`
+    SELECT u.*,
+           (SELECT COUNT(*) FROM keys k WHERE k.upstream_id = u.id) AS key_count,
+           (SELECT COUNT(*) FROM upstream_models m WHERE m.upstream_id = u.id AND m.enabled = 1) AS model_count
+      FROM upstreams u
+     ORDER BY u.priority ASC, u.id ASC
+  `).all();
+}
+
+function getUpstream(id) {
+  return db.prepare('SELECT * FROM upstreams WHERE id = ?').get(id);
+}
+
+function getUpstreamByName(name) {
+  return db.prepare('SELECT * FROM upstreams WHERE name = ?').get(name);
+}
+
+function addUpstream({ name, baseUrl, priority = 0, enabled = 1, staticKey = '' }) {
+  name = String(name || '').trim();
+  baseUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (!name || !baseUrl) return null;
+  const info = db.prepare(`
+    INSERT INTO upstreams (name, base_url, priority, enabled, static_key)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(name, baseUrl, parseInt(priority, 10) || 0, enabled ? 1 : 0, staticKey ? kc.encrypt(staticKey) : '');
+  return getUpstream(info.lastInsertRowid);
+}
+
+function updateUpstream(id, { name, baseUrl, priority, enabled, staticKey }) {
+  const cur = getUpstream(id);
+  if (!cur) return null;
+  const patch = {
+    name: name !== undefined ? String(name).trim() : cur.name,
+    base_url: baseUrl !== undefined ? String(baseUrl).trim().replace(/\/+$/, '') : cur.base_url,
+    priority: priority !== undefined ? (parseInt(priority, 10) || 0) : cur.priority,
+    enabled: enabled !== undefined ? (enabled ? 1 : 0) : cur.enabled,
+    static_key: staticKey !== undefined ? (staticKey ? kc.encrypt(staticKey) : '') : cur.static_key,
+  };
+  db.prepare(`
+    UPDATE upstreams
+       SET name = ?, base_url = ?, priority = ?, enabled = ?, static_key = ?
+     WHERE id = ?
+  `).run(patch.name, patch.base_url, patch.priority, patch.enabled, patch.static_key, id);
+  return getUpstream(id);
+}
+
+function deleteUpstream(id) {
+  const cur = getUpstream(id);
+  if (!cur) return false;
+  const txn = db.transaction(() => {
+    db.prepare('DELETE FROM upstream_models WHERE upstream_id = ?').run(id);
+    db.prepare('DELETE FROM keys WHERE upstream_id = ?').run(id);
+    db.prepare('DELETE FROM upstreams WHERE id = ?').run(id);
+  });
+  txn();
+  return true;
+}
+
+function setUpstreamStaticKey(id, plain) {
+  const cur = getUpstream(id);
+  if (!cur) return null;
+  db.prepare('UPDATE upstreams SET static_key = ? WHERE id = ?')
+    .run(plain ? kc.encrypt(plain) : '', id);
+  return getUpstream(id);
+}
+
+// ── model whitelist per upstream ────────────────────────────────────
+// `enabled` decides whether /v1/models advertises the model and whether
+// model-based routing may land on this upstream for it.
+function listModels(upstreamId, onlyEnabled = false) {
+  return db.prepare(`
+    SELECT model, enabled FROM upstream_models
+     WHERE upstream_id = ?
+       ${onlyEnabled ? 'AND enabled = 1' : ''}
+     ORDER BY model ASC
+  `).all(upstreamId);
+}
+
+function setModels(upstreamId, models) {
+  const list = (Array.isArray(models) ? models : String(models || '').split(/[\s,]+/))
+    .map((m) => String(m || '').trim())
+    .filter(Boolean);
+  const txn = db.transaction(() => {
+    db.prepare('DELETE FROM upstream_models WHERE upstream_id = ?').run(upstreamId);
+    const ins = db.prepare('INSERT OR IGNORE INTO upstream_models (upstream_id, model, enabled) VALUES (?, ?, 1)');
+    for (const m of list) ins.run(upstreamId, m);
+  });
+  txn();
+  return listModels(upstreamId);
+}
+
+function setModelEnabled(upstreamId, model, enabled) {
+  db.prepare(`
+    INSERT INTO upstream_models (upstream_id, model, enabled)
+    VALUES (?, ?, ?)
+    ON CONFLICT(upstream_id, model) DO UPDATE SET enabled = excluded.enabled
+  `).run(upstreamId, model, enabled ? 1 : 0);
+  return db.prepare('SELECT * FROM upstream_models WHERE upstream_id = ? AND model = ?').get(upstreamId, model);
+}
+
+function getUpstreamsForModel(model) {
+  // Candidate upstreams for model-based routing, in failover (priority) order.
+  return db.prepare(`
+    SELECT u.* FROM upstreams u
+    JOIN upstream_models m ON m.upstream_id = u.id
+     WHERE u.enabled = 1
+       AND m.enabled = 1
+       AND m.model = ?
+     ORDER BY u.priority ASC, u.id ASC
+  `).all(model);
+}
+
+function listAllEnabledModels() {
+  // The union advertised at GET /v1/models, with the upstreams that serve each.
+  return db.prepare(`
+    SELECT m.model AS id,
+           (SELECT group_concat(u2.name, ',') FROM upstreams u2
+             JOIN upstream_models mm ON mm.upstream_id = u2.id
+             WHERE mm.model = m.model AND mm.enabled = 1 AND u2.enabled = 1) AS owners
+      FROM upstream_models m
+     WHERE m.enabled = 1
+     GROUP BY m.model
+     ORDER BY m.model ASC
+  `).all();
 }
 
 // ── maintenance: resets counters for keys on a STALE window, revives cooldowns ──
@@ -179,7 +386,7 @@ function rawKey(row) {
 // 'exhausted' by recordSuccess and drops out of the WHERE clause.
 // Runs inside a synchronous transaction: the pick is atomic with any
 // subsequent accounting that the request handler performs.
-function pickKey() {
+function pickKey(upstreamId) {
   const txn = db.transaction(() => {
     maintenance();
     const row = db.prepare(`
@@ -187,9 +394,10 @@ function pickKey() {
        WHERE status = 'active'
          AND used_tokens < quota_tokens
          AND cooldown_until <= ?
+         AND (? IS NULL OR upstream_id = ?)
        ORDER BY used_tokens DESC, quota_tokens DESC, id ASC
        LIMIT 1
-    `).get(nowMs());
+    `).get(nowMs(), upstreamId ?? null, upstreamId ?? null);
     return row || null;
   });
   return txn();
@@ -254,10 +462,11 @@ function topUp(id, tokens) {
 }
 
 // ── admin helpers ──────────────────────────────────────────────────
-function listKeys({ status, q, limit = 500, offset = 0 } = {}) {
+function listKeys({ status, q, limit = 500, offset = 0, upstreamId = null } = {}) {
   let sql = 'SELECT * FROM keys WHERE 1=1';
   const args = [];
   if (status) { sql += ' AND status = ?'; args.push(status); }
+  if (upstreamId) { sql += ' AND upstream_id = ?'; args.push(parseInt(upstreamId, 10)); }
   if (q) { sql += ' AND (alias LIKE ? OR key LIKE ?)'; args.push(`%${q}%`, `%${q}%`); }
   sql += ' ORDER BY status ASC, used_tokens DESC, id ASC LIMIT ? OFFSET ?';
   args.push(limit, offset);
@@ -271,16 +480,17 @@ function getRow(id) {
 function updateKey(id, patch) {
   const row = getRow(id);
   if (!row) return null;
-  const { status, alias, quota } = patch || {};
+  const { status, alias, quota, upstream_id } = patch || {};
   db.prepare(`
     UPDATE keys SET
       status = COALESCE(?, status),
       alias = COALESCE(?, alias),
       quota_tokens = COALESCE(?, quota_tokens),
+      upstream_id = CASE WHEN ? IS NULL THEN upstream_id ELSE ? END,
       cooldown_until = CASE WHEN ? = 'active' THEN 0 ELSE cooldown_until END,
       fail_count = CASE WHEN ? = 'active' THEN 0 ELSE fail_count END
      WHERE id = ?
-  `).run(status ?? null, alias ?? null, quota ?? null, status ?? null, status ?? null, id);
+  `).run(status ?? null, alias ?? null, quota ?? null, upstream_id ?? null, upstream_id ?? null, status ?? null, status ?? null, id);
   return getRow(id);
 }
 
@@ -325,7 +535,14 @@ function bumpRequestCount() {
   `).run();
 }
 
-function countAll() { return db.prepare('SELECT COUNT(*) c FROM keys').get().c; }
+function countAll(filter = {}) {
+  let sql = 'SELECT COUNT(*) c FROM keys WHERE 1=1';
+  const args = [];
+  if (filter.status) { sql += ' AND status = ?'; args.push(filter.status); }
+  if (filter.upstreamId) { sql += ' AND upstream_id = ?'; args.push(parseInt(filter.upstreamId, 10)); }
+  if (filter.q) { sql += ' AND (alias LIKE ? OR key LIKE ?)'; args.push(`%${filter.q}%`, `%${filter.q}%`); }
+  return db.prepare(sql).get(...args).c;
+}
 function dbFile() { return db && db.name ? db.name : DB_PATH; }
 
 // ── unified static token (single upstream key, NO rotation) ─────────
@@ -375,8 +592,11 @@ function staticStatus() {
 
 module.exports = {
   init, addKey, addKeysBulk, pickKey, recordSuccess, recordFailure, recordCode, topUp,
-  listKeys, getRow, updateKey, deleteKey, resetUsage, stats,
+  listKeys, getRow, toPublic, updateKey, deleteKey, resetUsage, stats,
   bumpRequestCount, countAll, maintenance, rawKey, maskKey, sha256, dbFile,
   getStaticKey, setStaticKey, removeStaticKey, staticStatus,
+  listUpstreams, getUpstream, getUpstreamByName, addUpstream, updateUpstream,
+  deleteUpstream, setUpstreamStaticKey,
+  listModels, setModels, setModelEnabled, getUpstreamsForModel, listAllEnabledModels,
   config: { DEFAULT_QUOTA, FAIL_THRESHOLD, COOLDOWN_MS },
 };

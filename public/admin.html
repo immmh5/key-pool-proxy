@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Key Pool Proxy · Admin</title>
+<title>Key Pool Proxy · لوحة التحكم</title>
 <style>
   :root{
     --bg:#0d1117; --panel:#161b22; --panel2:#1f2530; --border:#30363d;
@@ -12,7 +12,7 @@
     --radius:8px;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"Segoe UI",Roboto,"Noto Sans Arabic",Helvetica,Arial,sans-serif}
   a{color:var(--accent)}
   header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:10;flex-wrap:wrap}
   header h1{font-size:16px;margin:0;font-weight:600}
@@ -24,17 +24,22 @@
   button:hover{border-color:var(--accent)}
   button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   button.danger{color:var(--red);border-color:var(--red)}
+  button.sm{padding:4px 10px;font-size:12px}
   .muted{color:var(--muted)}
   #auth{margin-left:auto;display:flex;gap:8px;align-items:center}
   .main{padding:20px;max-width:1200px;margin:0 auto}
+  .tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .tabs button{background:none;border:none;border-bottom:2px solid transparent;border-radius:0;padding:10px 16px;color:var(--muted);font-weight:600}
+  .tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
   .card .num{font-size:22px;font-weight:700}
   .card .lbl{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
   .card.g .num{color:var(--green)} .card.y .num{color:var(--yellow)} .card.r .num{color:var(--red)} .card.p .num{color:var(--purple)} .card.b .num{color:var(--accent)}
   .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
-  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+  .tbl-scroll{overflow-x:auto;margin-bottom:12px}
+  table{width:100%;min-width:760px;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
   th{background:var(--panel2);color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;position:sticky;top:62px;z-index:5}
   tr:last-child td{border-bottom:none}
   tr:hover td{background:#1a2230}
@@ -44,111 +49,212 @@
   .tag.cooldown{background:#27210f;color:var(--yellow);border:1px solid var(--yellow)}
   .tag.disabled{background:#2d1a1a;color:var(--red);border:1px solid var(--red)}
   .tag.no_quota{background:#271a30;color:var(--purple);border:1px solid var(--purple)}
+  .tag.on{background:#12271e;color:var(--green);border:1px solid var(--green)}
+  .tag.off{background:#2d1a1a;color:var(--red);border:1px solid var(--red)}
   .bar{width:90px;height:6px;background:#262c36;border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle}
   .bar>i{display:block;height:100%;background:var(--green)}
   .bar.warn>i{background:var(--yellow)} .bar.danger>i{background:var(--red)}
-  .op{background:none;border:none;color:var(--accent);padding:3px 6px;font-size:12px}
+  .op{background:none;border:none;color:var(--accent);padding:3px 6px;font-size:12px;cursor:pointer}
   .op.danger{color:var(--red)}
   .op:hover{text-decoration:underline}
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100}
   .modal-bg.show{display:flex}
-  .modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;width:460px;max-width:92vw;max-height:88vh;overflow:auto}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;width:480px;max-width:92vw;max-height:88vh;overflow:auto}
   .modal h3{margin-top:0}
   .modal label{display:block;margin:10px 0 4px;color:var(--muted);font-size:12px}
   .modal input,.modal select,.modal textarea{width:100%}
   .modal .row{display:flex;gap:8px}
   .modal .row>*{flex:1}
-  .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  .modal .actions{display:flex;justify-content:flex-start;gap:8px;margin-top:16px}
   textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;resize:vertical;min-height:140px}
   code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12px}
-  .toast{position:fixed;bottom:18px;right:18px;background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;display:none;max-width:360px;z-index:200}
+  .toast{position:fixed;bottom:18px;left:18px;background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;display:none;max-width:360px;z-index:200}
   .toast.err{border-color:var(--red);color:var(--red)}
   .toast.ok{border-color:var(--green);color:var(--green)}
-  .pager{display:flex;gap:8px;align-items:center;margin-top:12px;justify-content:flex-end}
+  .pager{display:flex;gap:8px;align-items:center;margin-top:12px;justify-content:flex-start}
   .empty{padding:30px;text-align:center;color:var(--muted)}
-  .progress-wrap{width:100px}
-  .progress{font-size:11px;color:var(--muted);margin-top:2px}
+  .mchips{display:flex;flex-wrap:wrap;gap:6px;max-width:340px}
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--border);border-radius:99px;font-size:12px;cursor:pointer;background:var(--panel2)}
+  .chip.off{opacity:.45;text-decoration:line-through}
+  .hint{background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;color:var(--muted);font-size:12.5px;margin-bottom:16px}
 </style>
 </head>
 <body>
 <header>
-  <h1>🔑 Key Pool Proxy · Admin</h1>
+  <h1>🔑 Key Pool Proxy · لوحة التحكم</h1>
   <span class="muted" id="today"></span>
   <div class="spacer"></div>
+  <button id="usageBtn" class="sm">❔ كيف تستخدمه؟</button>
   <div id="auth">
     <input type="password" id="token" placeholder="ADMIN_TOKEN" style="width:220px" autocomplete="off">
-    <button id="saveToken" class="primary">Save</button>
+    <button id="saveToken" class="primary">حفظ</button>
   </div>
 </header>
 
 <div class="main">
-  <div class="cards" id="cards"></div>
-
-  <div class="toolbar">
-    <input id="q" placeholder="Search alias / key…" style="width:220px">
-    <select id="status">
-      <option value="">All statuses</option>
-      <option value="active">active</option>
-      <option value="exhausted">exhausted</option>
-      <option value="cooldown">cooldown</option>
-      <option value="disabled">disabled</option>
-      <option value="no_quota">no_quota</option>
-    </select>
-    <button id="addBtn" class="primary">＋ Add keys</button>
-    <button id="reloadBtn">⟳ Refresh</button>
-    <span class="spacer"></span>
-    <button id="resetAllBtn" class="danger">Reset all usage</button>
+  <div class="tabs">
+    <button id="tabKeys" class="on">المفاتيح</button>
+    <button id="tabUps">الخوادم (Upstreams)</button>
   </div>
 
-  <table id="tbl">
-    <thead><tr>
-      <th data-k="id">ID</th>
-      <th data-k="alias">Alias</th>
-      <th data-k="key">Key</th>
-      <th data-k="status">Status</th>
-      <th data-k="percent">Usage</th>
-      <th data-k="used_tokens">Used</th>
-      <th data-k="fail_count">Fails</th>
-      <th>Last</th>
-      <th>Actions</th>
-    </tr></thead>
-    <tbody id="rows"></tbody>
-  </table>
-  <div id="empty" class="empty" style="display:none">No keys yet — click “＋ Add keys”.</div>
+  <!-- ═══════════ KEYS VIEW ═══════════ -->
+  <div id="keysView">
+    <div class="cards" id="cards"></div>
 
-  <div class="pager">
-    <button id="prevBtn">‹ Prev</button>
-    <span class="muted" id="pageInfo"></span>
-    <button id="nextBtn">Next ›</button>
+    <div class="toolbar">
+      <input id="q" placeholder="بحث في الاسم أو المفتاح…" style="width:220px">
+      <select id="status">
+        <option value="">كل الحالات</option>
+        <option value="active">active</option>
+        <option value="exhausted">exhausted</option>
+        <option value="cooldown">cooldown</option>
+        <option value="disabled">disabled</option>
+        <option value="no_quota">no_quota</option>
+      </select>
+      <select id="fUpstream" style="width:160px"><option value="">كل الخوادم</option></select>
+      <button id="addBtn" class="primary">＋ إضافة مفاتيح</button>
+      <button id="reloadBtn">⟳ تحديث</button>
+      <span class="spacer"></span>
+      <button id="resetAllBtn" class="danger">تصفير الاستهلاك</button>
+    </div>
+
+    <div class="tbl-scroll">
+    <table id="tbl">
+      <thead><tr>
+        <th data-k="id">ID</th>
+        <th data-k="alias">الاسم</th>
+        <th data-k="key">المفتاح</th>
+        <th data-k="upstream_id">الخادم</th>
+        <th data-k="status">الحالة</th>
+        <th data-k="percent">الاستهلاك</th>
+        <th data-k="used_tokens">المستخدم</th>
+        <th data-k="fail_count">الأخطاء</th>
+        <th>آخر استخدام</th>
+        <th>إجراءات</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    </div>
+    <div id="empty" class="empty" style="display:none">لا توجد مفاتيح بعد — اضغط «＋ إضافة مفاتيح».</div>
+
+    <div class="pager">
+      <button id="prevBtn">‹ السابق</button>
+      <span class="muted" id="pageInfo"></span>
+      <button id="nextBtn">التالي ›</button>
+    </div>
+  </div>
+
+  <!-- ═══════════ UPSTREAMS VIEW ═══════════ -->
+  <div id="upsView" style="display:none">
+    <div class="hint">
+      كل خادم (upstream) هو مزود OpenAI-compatible برابطه الخاص ومفاتيحه.
+      التوجيه: مسار صريح <code>/v1/&lt;name&gt;/…</code> ← ثم حقل <code>model</code>
+      (الخوادم التي تسمح بالنموذج حسب الأولوية) ← ثم الفشل للخادم التالي.
+      القائمة البيضاء للنماذج تحدد ما يُعلَن في <code>/v1/models</code>.
+    </div>
+
+    <div class="toolbar">
+      <button id="addUpBtn" class="primary">＋ إضافة خادم</button>
+      <button id="reloadUpsBtn">⟳ تحديث</button>
+    </div>
+
+    <div class="tbl-scroll">
+    <table id="upsTbl">
+      <thead><tr>
+        <th>ID</th><th>الاسم</th><th>الرابط</th><th>الأولوية</th><th>الحالة</th>
+        <th>المفتاح الثابت</th><th>المفاتيح</th><th>النماذج</th><th>إجراءات</th>
+      </tr></thead>
+      <tbody id="upsRows"></tbody>
+    </table>
+    </div>
+    <div id="upsEmpty" class="empty" style="display:none">لا توجد خوادم بعد — اضغط «＋ إضافة خادم» (أو عيّن متغير البيئة <code>UPSTREAMS</code>).</div>
   </div>
 </div>
 
-<!-- Add modal -->
+<!-- Add keys modal -->
 <div class="modal-bg" id="addModal">
   <div class="modal">
-    <h3>Add keys</h3>
-    <p class="muted" style="margin-top:0">Paste keys — one per line — or JSON <code>{"keys":[...]}</code>. Duplicates are skipped (counted as updated).</p>
-    <textarea id="addText" placeholder="sk-abc123...&#10;sk-def456...&#10;{&quot;keys&quot;:[{&quot;key&quot;:&quot;sk-...&quot;,&quot;alias&quot;:&quot;prod&quot;,&quot;quota&quot;:1000000}]}"></textarea>
+    <h3>إضافة مفاتيح</h3>
+    <p class="muted" style="margin-top:0">الصق المفاتيح — واحد لكل سطر — أو JSON <code>{"keys":[...]}</code>. المكرر يُتخطى (يُحسب كتحديث).</p>
+    <label>الخادم (upstream) الذي تنتمي إليه هذه المفاتيح</label>
+    <select id="addUpstream"></select>
+    <textarea id="addText" placeholder="sk-abc123...&#10;sk-def456...&#10;{&quot;keys&quot;:[{&quot;key&quot;:&quot;sk-...&quot;,&quot;alias&quot;:&quot;prod&quot;,&quot;quota&quot;:1000000}]}" style="margin-top:10px"></textarea>
     <div class="actions">
-      <button onclick="closeModal('addModal')">Cancel</button>
-      <button class="primary" onclick="doAdd()">Add to pool</button>
+      <button onclick="closeModal('addModal')">إلغاء</button>
+      <button class="primary" onclick="doAdd()">إضافة للمجموعة</button>
     </div>
   </div>
 </div>
 
-<!-- Edit modal -->
+<!-- Edit key modal -->
 <div class="modal-bg" id="editModal">
   <div class="modal">
-    <h3>Edit key <span class="muted" id="editId"></span></h3>
-    <label>Alias</label><input id="eAlias">
-    <label>Status</label>
+    <h3>تعديل المفتاح <span class="muted" id="editId"></span></h3>
+    <label>الاسم (alias)</label><input id="eAlias">
+    <label>الحالة</label>
     <select id="eStatus">
       <option>active</option><option>exhausted</option><option>cooldown</option><option>disabled</option>
     </select>
-    <label>Quota (tokens / day)</label><input id="eQuota" type="number" min="1">
+    <label>الخادم (upstream)</label><select id="eUpstream"></select>
+    <label>الحصة (tokens / day)</label><input id="eQuota" type="number" min="1">
     <div class="actions">
-      <button onclick="closeModal('editModal')">Cancel</button>
-      <button class="primary" onclick="doEdit()">Save</button>
+      <button onclick="closeModal('editModal')">إلغاء</button>
+      <button class="primary" onclick="doEdit()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Upstream modal (add/edit) -->
+<div class="modal-bg" id="upModal">
+  <div class="modal">
+    <h3 id="upTitle">إضافة خادم</h3>
+    <label>الاسم (يظهر في المسار /v1/&lt;name&gt;/…)</label><input id="upName" placeholder="مثال: openai-main" dir="ltr">
+    <label>الرابط الأساسي (Base URL)</label><input id="upBaseUrl" placeholder="https://api.openai.com/v1" dir="ltr">
+    <div class="row">
+      <div><label>الأولوية (الأقل أولاً)</label><input id="upPriority" type="number" min="0" value="1"></div>
+      <div><label>الحالة</label><select id="upEnabled"><option value="1">مُفعَّل</option><option value="0">مُعطَّل</option></select></div>
+    </div>
+    <label>مفتاح ثابت (اختياري — ثابت لا يدور تلقائياً؛ اتركه فارغاً لاستعمال مجموعة المفاتيح)</label>
+    <input id="upStatic" type="password" placeholder="sk-… (اتركه فارغاً للإبقاء على الحالي)" autocomplete="off">
+    <div class="actions">
+      <button onclick="closeModal('upModal')">إلغاء</button>
+      <button class="primary" onclick="doSaveUp()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Upstream detail / model whitelist modal -->
+<div class="modal-bg" id="upDetailModal">
+  <div class="modal" style="width:560px">
+    <h3 id="udTitle">النماذج المسموحة</h3>
+    <p class="muted" style="margin:0 0 10px;font-size:12.5px" id="udUrl"></p>
+
+    <div class="row" style="margin-bottom:12px">
+      <input id="udNewModel" placeholder="أضف نموذجاً يدوياً…" dir="ltr">
+      <button id="udAddModel" class="sm" style="flex:0 0 auto">＋ إضافة</button>
+      <button id="udDiscover" class="sm primary" style="flex:0 0 auto">🔎 اكتشاف النماذج</button>
+      <button id="udFetch" class="sm" style="flex:0 0 auto">⇩ جلب الكل</button>
+    </div>
+
+    <div id="udDiscoverPanel" style="display:none;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--panel2)">
+      <div class="row" style="margin-bottom:8px">
+        <input id="udFilter" placeholder="تصفية النماذج…" dir="ltr" style="flex:1">
+        <label class="muted" style="flex:0 0 auto;display:flex;gap:4px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="udSelectAll" style="margin:0"> تحديد الكل
+        </label>
+      </div>
+      <div id="udAvailable" style="max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:3px"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="udSaveSelection" class="sm primary" style="flex:0 0 auto">💾 حفظ التحديد</button>
+        <span class="muted" style="font-size:11.5px">القائمة البيضاء تصبح = النماذج المحدّدة فقط (النماذج اليدوية غير المعروضة تبقى محفوظة)</span>
+      </div>
+    </div>
+
+    <div id="udModels" style="display:flex;flex-wrap:wrap;gap:6px;min-height:60px"></div>
+    <div id="udNoModels" class="muted" style="display:none;padding:14px 0">لا نماذج في القائمة بعد. أضفها يدوياً أو اضغط «اكتشاف النماذج».</div>
+
+    <div class="actions">
+      <button onclick="closeModal('upDetailModal')">تم</button>
     </div>
   </div>
 </div>
@@ -156,13 +262,61 @@
 <!-- Unified static token modal -->
 <div class="modal-bg" id="staticModal">
   <div class="modal">
-    <h3>Unified static token</h3>
-    <p class="muted" style="margin:0 0 6px">When set, <b>all</b> requests use this single token. It stays fixed and is only changed <b>manually</b> — never auto-rotated. Pool keys are ignored while a static token is active (kept safe in the DB).</p>
-    <label>Static token (paste the full key)</label>
+    <h3>المفتاح الموحَّد العام (قديم)</h3>
+    <p class="muted" style="margin:0 0 6px">إذا عُيِّن، فإن <b>كل</b> الطلبات تستعمل هذا المفتاح وحده. يبقى ثابتاً ولا يتغير إلا يدوياً، وتُتجاهل مفاتيح المجموعات أثناء تفعيله. <b>ملاحظة:</b> المفتاح الثابت لكل خادم (في تبويب الخوادم) يأخذ الأولوية.</p>
+    <label>المفتاح الثابت (الصق المفتاح كاملاً)</label>
     <input id="staticKeyInput" type="password" placeholder="sk-…" autocomplete="off">
     <div class="actions">
-      <button onclick="closeModal('staticModal')">Cancel</button>
-      <button class="primary" onclick="doSetStatic()">Set token</button>
+      <button onclick="closeModal('staticModal')">إلغاء</button>
+      <button class="primary" onclick="doSetStatic()">تعيين</button>
+    </div>
+  </div>
+</div>
+
+<!-- Usage guide modal -->
+<div class="modal-bg" id="usageModal">
+  <div class="modal" style="width:640px">
+    <h3>❔ كيف تستخدم هذا الموقع كـ API خاص بك</h3>
+    <p class="muted" style="margin:0 0 12px;font-size:12.5px">
+      هذا الموقع هو <b>بوابة (gateway)</b> متوافقة مع OpenAI. يكفي تطبيقك أن يشير إلى رابطه بدل api.openai.com،
+      ويوزّع الطلبات على مفاتيحك تلقائياً مع التبديل عند الفشل.
+    </p>
+
+    <label>رابط الـ API الخاص بك (Base URL)</label>
+    <input id="usBaseUrl" readonly dir="ltr" style="font-family:ui-monospace,monospace">
+
+    <div id="usAuthWarn" class="hint" style="display:none;border-color:var(--red);color:var(--red)"></div>
+
+    <label>المصادقة (Authentication)</label>
+    <p class="muted" style="margin:0 0 10px;font-size:12.5px">
+      أرسل توكن البوابة في الهيدر: <code>Authorization: Bearer <span id="usTokenHint">$GATEWAY_TOKEN</span></code>
+      <span id="usTokenState"></span>
+    </p>
+
+    <label>المسارات المتاحة</label>
+    <div class="tbl-scroll" style="margin-bottom:10px">
+      <table>
+        <thead><tr><th>الطريقة والمسار</th><th>الغرض</th></tr></thead>
+        <tbody>
+          <tr><td dir="ltr"><code>POST <span class="us-base"></span>/v1/chat/completions</code></td><td>الدردشة (يستبدل api.openai.com)</td></tr>
+          <tr><td dir="ltr"><code>POST <span class="us-base"></span>/v1/embeddings</code></td><td>التضمينات</td></tr>
+          <tr><td dir="ltr"><code>GET <span class="us-base"></span>/v1/models</code></td><td>قائمة النماذج المفعّلة في كل الخوادم</td></tr>
+          <tr><td dir="ltr"><code>POST <span class="us-base"></span>/v1/&lt;اسم-الخادم&gt;/v1/chat/completions</code></td><td>توجيه صريح لخادم واحد</td></tr>
+          <tr><td dir="ltr"><code>GET <span class="us-base"></span>/health</code></td><td>فحص الصحة</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <label>مثال curl</label>
+    <textarea id="usCurl" readonly dir="ltr" style="min-height:120px"></textarea>
+
+    <label>في كود JavaScript / Python</label>
+    <p class="muted" style="margin:0;font-size:12.5px" dir="ltr">
+      OpenAI SDK: <code>baseURL: '<span class="us-base"></span>/v1'</code> + <code>apiKey: GATEWAY_TOKEN</code>
+    </p>
+
+    <div class="actions">
+      <button onclick="closeModal('usageModal')">تم</button>
     </div>
   </div>
 </div>
@@ -172,8 +326,11 @@
 <script>
 const TOKEN_KEY = 'kpool_admin_token';
 let token = localStorage.getItem(TOKEN_KEY) || '';
-let keys = [], total = 0, offset = 0, limit = 100, status = '', q = '';
+let keys = [], total = 0, offset = 0, limit = 100, status = '', q = '', fUpstream = '';
 let sortKey = 'id', sortDir = 1;
+let upstreams = [];
+let udId = null, udModels = [];
+let editingUp = null;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -186,6 +343,9 @@ function toast(msg, ok = true) {
   clearTimeout(t._h);
   t._h = setTimeout(() => t.style.display = 'none', 3500);
 }
+
+function openModal(id) { $(id).classList.add('show'); }
+function closeModal(id) { $(id).classList.remove('show'); }
 
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
@@ -200,15 +360,27 @@ async function api(path, opts = {}) {
 
 function needToken() {
   if (token) return true;
-  toast('Enter ADMIN_TOKEN first', false);
+  toast('أدخل ADMIN_TOKEN أولاً', false);
   return false;
 }
 
+// ── tabs ──
+$('tabKeys').onclick = () => switchTab('keys');
+$('tabUps').onclick = () => switchTab('ups');
+function switchTab(which) {
+  $('tabKeys').classList.toggle('on', which === 'keys');
+  $('tabUps').classList.toggle('on', which === 'ups');
+  $('keysView').style.display = which === 'keys' ? 'block' : 'none';
+  $('upsView').style.display = which === 'ups' ? 'block' : 'none';
+  if (which === 'ups') loadUpstreams();
+}
+
+// ── stats + cards ──
 async function loadStats() {
   if (!needToken()) return;
   try {
     const [s, st] = await Promise.all([api('/stats'), api('/static').catch(() => null)]);
-    $('today').textContent = 'window: ' + s.today;
+    $('today').textContent = 'النافذة: ' + s.today;
     renderCards(s, st);
   } catch (e) { toast(e.message, false); }
 }
@@ -218,24 +390,24 @@ function renderCards(s, st) {
   const fmt = (n) => (n ?? 0).toLocaleString();
   const pct = (k.quota_total || k.used_today) ? Math.round((k.used_today / Math.max(k.quota_total, 1)) * 10000) / 100 : 0;
   const defs = [
-    ['Total keys', fmt(k.total), 'b'],
-    ['Active', fmt(k.active), 'g'],
-    ['Exhausted', fmt(k.exhausted), 'y'],
-    ['Cooldown/Disabled', fmt(k.paused), 'r'],
-    ['Used today (tokens)', fmt(k.used_today), 'p'],
-    ['Requests served', fmt(s.requests_served), 'b'],
-    ['Pool used', pct + '%', pct > 90 ? 'r' : (pct > 70 ? 'y' : 'g')],
+    ['إجمالي المفاتيح', fmt(k.total), 'b'],
+    ['نشط', fmt(k.active), 'g'],
+    ['مستنزف', fmt(k.exhausted), 'y'],
+    ['متوقف/معطَّل', fmt(k.paused), 'r'],
+    ['استهلاك اليوم (tokens)', fmt(k.used_today), 'p'],
+    ['الطلبات المخدومة', fmt(s.requests_served), 'b'],
+    ['استهلاك المجموعة', pct + '%', pct > 90 ? 'r' : (pct > 70 ? 'y' : 'g')],
   ];
   let html = defs.map(([l, v, c]) =>
     `<div class="card ${c}"><div class="lbl">${l}</div><div class="num">${v}</div></div>`).join('');
   if (st) {
     const on = !!st.enabled;
     html = `<div class="card ${on ? 'g' : 'b'}" style="grid-column:1/-1">
-      <div class="lbl">Unified token · ${on ? 'ENABLED — single static key' : 'OFF — pool rotation'}</div>
-      <div class="num" style="font-size:20px">${on ? esc(st.masked) : 'no static token'}</div>
-      <div class="muted" style="margin:2px 0 8px">${on ? 'static · changed only manually · pool keys ignored' : 'set a unified token to pin one key / stop auto-rotation'}</div>
-      <button class="primary" id="setStaticBtn">${on ? 'Change token' : 'Set token'}</button>
-      ${on ? '<button class="danger" id="clearStaticBtn">Clear → pool again</button>' : ''}
+      <div class="lbl">المفتاح الموحَّد · ${on ? 'مُفعَّل — مفتاح ثابت واحد' : 'مُعطَّل — دوران المجموعة'}</div>
+      <div class="num" style="font-size:20px">${on ? esc(st.masked) : 'لا يوجد مفتاح ثابت'}</div>
+      <div class="muted" style="margin:2px 0 8px">${on ? 'ثابت · يُغيَّر يدوياً فقط · تُتجاهل مفاتيح المجموعة' : 'عيِّن مفتاحاً موحَّداً لتثبيت مفتاح واحد / إيقاف الدوران التلقائي'}</div>
+      <button class="primary" id="setStaticBtn">${on ? 'تغيير المفتاح' : 'تعيين مفتاح'}</button>
+      ${on ? '<button class="danger" id="clearStaticBtn">مسح → العودة للمجموعة</button>' : ''}
     </div>` + html;
   }
   $('cards').innerHTML = html;
@@ -250,26 +422,42 @@ function openStaticModal() {
 }
 async function doSetStatic() {
   const key = $('staticKeyInput').value.trim();
-  if (!key) return toast('Paste the token first', false);
+  if (!key) return toast('الصق المفتاح أولاً', false);
   try {
     await api('/static', { method: 'POST', body: JSON.stringify({ key }) });
-    toast('Static token saved — now in use');
+    toast('تم حفظ المفتاح الثابت — قيد الاستعمال');
     closeModal('staticModal'); loadStats(); loadKeys();
   } catch (e) { toast(e.message, false); }
 }
 async function clearStaticToken() {
-  if (!confirm('Clear the unified token and switch back to pool rotation?')) return;
+  if (!confirm('مسح المفتاح الموحَّد والعودة لدوران المجموعة؟')) return;
   try {
     await api('/static', { method: 'DELETE' });
-    toast('Static token cleared — pool mode');
+    toast('تم المسح — وضع دوران المجموعة');
     loadStats(); loadKeys();
   } catch (e) { toast(e.message, false); }
 }
 
+// ── upstream options in selects ──
+function upNameById(id) {
+  const u = upstreams.find((x) => x.id === id);
+  return u ? u.name : ('#' + id);
+}
+function fillUpstreamSelects() {
+  const opts = upstreams.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  $('addUpstream').innerHTML = '<option value="">— اختر خادماً —</option>' + opts;
+  $('eUpstream').innerHTML = '<option value="">— عام (غير مرتبط) —</option>' + opts;
+  const cur = fUpstream;
+  $('fUpstream').innerHTML = '<option value="">كل الخوادم</option>' + opts;
+  $('fUpstream').value = cur;
+}
+
+// ── keys list ──
 async function loadKeys() {
   if (!needToken()) return;
   try {
     const params = new URLSearchParams({ limit, offset, status, q });
+    if (fUpstream) params.set('upstream_id', fUpstream);
     const d = await api('/keys?' + params);
     keys = d.keys || [];
     total = d.total || 0;
@@ -296,110 +484,341 @@ function renderRows() {
     const barCls = pct >= 95 ? 'danger' : pct >= 75 ? 'warn' : '';
     const last = k.last_error
       ? `<span class="muted" title="${esc(k.last_error)}">${esc((k.last_error + '').slice(0, 18))}${(k.last_error + '').length > 18 ? '…' : ''}</span>`
-      : (k.last_used_at ? esc(k.last_used_at.slice(0, 16).replace('T', ' ')) : '—');
-    const s = k.status || '';
-    const cd = (s === 'cooldown' && k.cooldown_until) ? ` · <span class="muted">until ${new Date(k.cooldown_until).toLocaleTimeString()}</span>` : '';
+      : (k.last_used_at ? esc(k.last_used_at) : '<span class="muted">—</span>');
     return `<tr>
       <td class="muted">${k.id}</td>
-      <td title="${esc(k.alias)}">${esc(k.alias) || '—'}</td>
-      <td><code title="${esc(k.key_sha)}">${esc(k.key)}</code></td>
-      <td>${tagHtml(s)}${cd}</td>
-      <td><div class="progress-wrap"><div class="bar ${barCls}"><i style="width:${Math.min(pct, 100)}%"></i></div><div class="progress">${pct}%</div></div></td>
-      <td>${Number(k.used_tokens || 0).toLocaleString()} / ${Number(k.quota_tokens || 0).toLocaleString()}</td>
+      <td>${esc(k.alias || '—')}</td>
+      <td dir="ltr" style="font-family:ui-monospace,monospace;font-size:12px">${esc(k.key || '')}</td>
+      <td>${k.upstream_id ? esc(upNameById(k.upstream_id)) : '<span class="muted">عام</span>'}</td>
+      <td>${tagHtml(k.status)}</td>
+      <td><span class="bar ${barCls}"><i style="width:${Math.min(100, pct)}%"></i></span> <span class="muted" style="font-size:11px">${pct}%</span></td>
+      <td dir="ltr">${(k.used_tokens || 0).toLocaleString()}</td>
       <td>${k.fail_count || 0}</td>
-      <td>${last}</td>
-      <td>
-        <button class="op" onclick="openEdit(${k.id})">edit</button>
-        <button class="op" onclick="topUp(${k.id})">topup</button>
-        <button class="op" onclick="resetKey(${k.id})">reset</button>
-        <button class="op" onclick="testKey(${k.id})">test</button>
-        <button class="op danger" onclick="delKey(${k.id})">del</button>
+      <td style="white-space:normal;max-width:160px">${last}</td>
+      <td style="white-space:normal">
+        <button class="op" onclick="openEdit(${k.id})">تعديل</button>
+        <button class="op" onclick="topUp(${k.id})">شحن</button>
+        <button class="op" onclick="resetKey(${k.id})">تصفير</button>
+        <button class="op" onclick="testKey(${k.id})">اختبار</button>
+        <button class="op danger" onclick="delKey(${k.id})">حذف</button>
       </td>
     </tr>`;
   }).join('');
-  $('pageInfo').textContent = `${offset + 1}–${Math.min(offset + limit, total)} / ${total}`;
+  $('pageInfo').textContent = (offset + 1) + '–' + Math.min(total, offset + keys.length) + ' / ' + total;
 }
 
-function openModal(id) { $(id).classList.add('show'); }
-function closeModal(id) { $(id).classList.remove('show'); }
-
-function openAdd() { $('addText').value = ''; openModal('addModal'); }
-async function doAdd() {
-  if (!needToken()) return;
-  const text = $('addText').value.trim();
-  if (!text) return toast('Nothing to add', false);
+async function openEdit(id) {
+  let k = keys.find((x) => x.id === id);
   try {
-    let body;
-    if (text.startsWith('{') || text.startsWith('[')) { body = JSON.parse(text); }
-    else body = text; // one per line
-    const d = await api('/keys', { method: 'POST', body: JSON.stringify(body) });
-    toast(`added ${d.added} · updated ${d.updated} · invalid ${d.invalid}`);
-    closeModal('addModal'); loadStats(); loadKeys();
-  } catch (e) { toast((e.message + ' — keys must be valid strings, JSON object/array, or text lines'), false); }
-}
-
-function openEdit(id) {
-  const k = keys.find((x) => x.id === id);
-  if (!k) return;
+    if (!k) k = await api('/keys/' + id);
+  } catch { /* keep undefined */ }
+  if (!k) return toast('لم يُعثر على المفتاح', false);
   $('editId').textContent = '#' + id;
   $('eAlias').value = k.alias || '';
-  $('eStatus').value = ['active', 'exhausted', 'cooldown', 'disabled'].includes(k.status) ? k.status : 'active';
+  $('eStatus').value = k.status || 'active';
   $('eQuota').value = k.quota_tokens || '';
+  $('eUpstream').value = k.upstream_id || '';
   openModal('editModal');
 }
 async function doEdit() {
-  const id = +$('editId').textContent.slice(1);
+  const id = parseInt($('editId').textContent.slice(1), 10);
+  if (!Number.isFinite(id)) return toast('لا يوجد مفتاح محدد للتعديل', false);
   const body = {
     alias: $('eAlias').value.trim(),
     status: $('eStatus').value,
-    quota: parseInt($('eQuota').value, 10) || undefined,
+    quota_tokens: parseInt($('eQuota').value, 10) || null,
+    upstream_id: $('eUpstream').value ? parseInt($('eUpstream').value, 10) : null,
   };
-  try { await api('/keys/' + id, { method: 'PATCH', body: JSON.stringify(body) }); toast('Saved'); closeModal('editModal'); loadStats(); loadKeys(); }
-  catch (e) { toast(e.message, false); }
+  try {
+    await api('/keys/' + id, { method: 'PATCH', body: JSON.stringify(body) });
+    toast('تم الحفظ');
+    closeModal('editModal'); loadKeys(); loadStats();
+  } catch (e) { toast(e.message, false); }
 }
-
-async function topUp(id) {
-  const v = prompt(`Top up quota for key #${id} (tokens):`, '100000');
-  if (!v) return;
-  const n = parseInt(v, 10);
-  if (!n || n <= 0) return toast('Invalid token count', false);
-  api('/keys/' + id + '/topup', { method: 'POST', body: JSON.stringify({ tokens: n }) }).then(() => { toast('Topped up'); loadStats(); loadKeys(); }).catch((e) => toast(e.message, false));
+async function doAdd() {
+  const text = $('addText').value.trim();
+  if (!text) return toast('الصق المفاتيح أولاً', false);
+  const upId = $('addUpstream').value ? parseInt($('addUpstream').value, 10) : null;
+  let body;
+  if (text.startsWith('{')) {
+    try { body = JSON.parse(text); if (upId) body.upstream_id = upId; }
+    catch { return toast('JSON غير صالح', false); }
+  } else {
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    body = { keys: lines.map((key) => ({ key })), upstream_id: upId };
+  }
+  try {
+    const d = await api('/keys', { method: 'POST', body: JSON.stringify(body) });
+    toast(`تمت الإضافة: ${d.added.length} جديد · ${d.updated.length} تحديث · ${d.invalid} غير صالح`);
+    closeModal('addModal'); $('addText').value = '';
+    loadKeys(); loadStats(); loadUpstreams();
+  } catch (e) { toast(e.message, false); }
 }
 async function resetKey(id) {
-  if (!confirm(`Reset 24h usage for key #${id}?`)) return;
-  api('/keys/' + id + '/reset', { method: 'POST' }).then(() => { toast('Reset'); loadStats(); loadKeys(); }).catch((e) => toast(e.message, false));
+  if (!confirm('تصفير استهلاك هذا المفتاح؟')) return;
+  try {
+    await api('/keys/' + id + '/reset', { method: 'POST' });
+    toast('تم التصفير'); loadKeys(); loadStats();
+  } catch (e) { toast(e.message, false); }
+}
+async function topUp(id) {
+  const n = prompt('كم tokens تضيف للحصة؟', '1000000');
+  if (!n) return;
+  try {
+    await api('/keys/' + id + '/topup', { method: 'POST', body: JSON.stringify({ tokens: parseInt(n, 10) }) });
+    toast('تم الشحن'); loadKeys(); loadStats();
+  } catch (e) { toast(e.message, false); }
 }
 async function delKey(id) {
-  if (!confirm(`Delete key #${id} permanently?`)) return;
-  api('/keys/' + id, { method: 'DELETE' }).then((d) => { toast('deleted ' + d.deleted); loadStats(); loadKeys(); }).catch((e) => toast(e.message, false));
+  if (!confirm('حذف هذا المفتاح نهائياً؟')) return;
+  try {
+    await api('/keys/' + id, { method: 'DELETE' });
+    toast('تم الحذف'); loadKeys(); loadStats(); loadUpstreams();
+  } catch (e) { toast(e.message, false); }
 }
 async function testKey(id) {
-  toast('Testing against upstream…');
+  toast('جارٍ الاختبار…');
   try {
-    const r = await api('/test', { method: 'POST', body: JSON.stringify({ id }) });
-    if (!r.ok) toast(`#${id}: HTTP ${r.status} — ${esc(r.raw || r.error || '').slice(0, 80)}`, false);
-    else toast(`#${id}: ${r.status} OK — ${r.models}`);
+    const d = await api('/test', { method: 'POST', body: JSON.stringify({ id }) });
+    if (d.ok) toast(`✅ المفتاح يعمل · ${d.models} نموذج`);
+    else toast(`❌ الخادم ردّ ${d.status}`, false);
   } catch (e) { toast(e.message, false); }
 }
 
-$('resetAllBtn').onclick = async () => {
-  if (!confirm('Reset usage for ALL keys (new 24h window)? This is automatic daily, only run when needed.')) return;
-  api('/reset-all', { method: 'POST' }).then(() => { toast('All usage reset'); loadStats(); loadKeys(); }).catch((e) => toast(e.message, false));
+// ── upstreams list ──
+async function loadUpstreams() {
+  if (!needToken()) return;
+  try {
+    upstreams = await api('/upstreams');
+    fillUpstreamSelects();
+    renderUpstreams();
+  } catch (e) { toast(e.message, false); }
+}
+
+function renderUpstreams() {
+  const tb = $('upsRows');
+  if (!upstreams.length) {
+    tb.innerHTML = '';
+    $('upsEmpty').style.display = 'block';
+    return;
+  }
+  $('upsEmpty').style.display = 'none';
+  tb.innerHTML = upstreams.map((u) => `<tr>
+    <td class="muted">${u.id}</td>
+    <td><b>${esc(u.name)}</b></td>
+    <td dir="ltr" style="font-family:ui-monospace,monospace;font-size:12px">${esc(u.base_url)}</td>
+    <td dir="ltr">${u.priority}</td>
+    <td><span class="tag ${u.enabled ? 'on' : 'off'}">${u.enabled ? 'مُفعَّل' : 'معطَّل'}</span></td>
+    <td>${u.static_key ? '<span class="tag on">ثابت ✓</span>' : '<span class="muted">مجموعة</span>'}</td>
+    <td dir="ltr">${u.key_count}</td>
+    <td dir="ltr">${u.model_count}</td>
+    <td style="white-space:normal">
+      <button class="op" onclick="openUpDetail(${u.id})">النماذج</button>
+      <button class="op" onclick="openEditUp(${u.id})">تعديل</button>
+      <button class="op" onclick="fetchModels(${u.id})">جلب النماذج</button>
+      <button class="op danger" onclick="delUp(${u.id})">حذف</button>
+    </td>
+  </tr>`).join('');
+}
+
+function openAddUp() {
+  editingUp = null;
+  $('upTitle').textContent = 'إضافة خادم';
+  $('upName').value = ''; $('upBaseUrl').value = '';
+  $('upPriority').value = 1; $('upEnabled').value = '1';
+  $('upStatic').value = ''; $('upStatic').placeholder = 'sk-… (اختياري)';
+  openModal('upModal');
+  $('upName').focus();
+}
+function openEditUp(id) {
+  const u = upstreams.find((x) => x.id === id);
+  if (!u) return;
+  editingUp = id;
+  $('upTitle').textContent = 'تعديل الخادم: ' + u.name;
+  $('upName').value = u.name;
+  $('upBaseUrl').value = u.base_url;
+  $('upPriority').value = u.priority;
+  $('upEnabled').value = u.enabled ? '1' : '0';
+  $('upStatic').value = '';
+  $('upStatic').placeholder = u.static_key ? 'ثابت ✓ — اتركه فارغاً للإبقاء عليه' : 'sk-… (اختياري)';
+  openModal('upModal');
+}
+async function doSaveUp() {
+  const name = $('upName').value.trim();
+  const baseUrl = $('upBaseUrl').value.trim();
+  if (!name || !baseUrl) return toast('الاسم والرابط مطلوبان', false);
+  const body = {
+    name, baseUrl,
+    priority: parseInt($('upPriority').value, 10) || 1,
+    enabled: $('upEnabled').value === '1',
+  };
+  const sk = $('upStatic').value.trim();
+  if (sk) body.staticKey = sk;
+  try {
+    if (editingUp) {
+      await api('/upstreams/' + editingUp, { method: 'PATCH', body: JSON.stringify(body) });
+      toast('تم حفظ الخادم');
+    } else {
+      await api('/upstreams', { method: 'POST', body: JSON.stringify(body) });
+      toast('تمت إضافة الخادم');
+    }
+    closeModal('upModal');
+    loadUpstreams(); loadStats(); loadKeys();
+  } catch (e) { toast(e.message, false); }
+}
+async function delUp(id) {
+  const u = upstreams.find((x) => x.id === id);
+  if (!confirm(`حذف الخادم "${u ? u.name : id}" مع قوائمه ونماذجه ومفاتيحه؟`)) return;
+  try {
+    await api('/upstreams/' + id, { method: 'DELETE' });
+    toast('تم حذف الخادم');
+    loadUpstreams(); loadStats(); loadKeys();
+  } catch (e) { toast(e.message, false); }
+}
+async function fetchModels(id) {
+  toast('جارٍ جلب النماذج من الخادم…');
+  try {
+    const d = await api('/upstreams/' + id + '/fetch-models', { method: 'POST', body: JSON.stringify({}) });
+    toast(`⇩ تم جلب ${d.fetched} نموذج`);
+    loadUpstreams();
+    if (udId === id) openUpDetail(id, true);
+  } catch (e) { toast(e.message, false); }
+}
+
+// ── upstream detail / model whitelist ──
+async function openUpDetail(id, keepScroll) {
+  udId = id;
+  const u = upstreams.find((x) => x.id === id);
+  $('udTitle').textContent = 'النماذج المسموحة · ' + (u ? u.name : '');
+  $('udUrl').textContent = u ? u.base_url : '';
+  $('udNewModel').value = '';
+  try {
+    const d = await api('/upstreams/' + id);
+    udModels = d.models || [];
+  } catch (e) { toast(e.message, false); udModels = []; }
+  renderUdModels();
+  if (!keepScroll) openModal('upDetailModal');
+}
+function renderUdModels() {
+  $('udNoModels').style.display = udModels.length ? 'none' : 'block';
+  $('udModels').innerHTML = udModels.map((m) =>
+    `<span class="chip ${m.enabled ? '' : 'off'}" title="اضغط للتفعيل/التعطيل">
+      <input type="checkbox" ${m.enabled ? 'checked' : ''} onchange="toggleModel(${udId}, '${esc(m.model).replace(/'/g, "\\'")}', this.checked)" style="margin:0">
+      ${esc(m.model)}
+    </span>`).join('');
+}
+async function toggleModel(id, model, enabled) {
+  try {
+    await api(`/upstreams/${id}/models/${encodeURIComponent(model)}/toggle`, {
+      method: 'POST', body: JSON.stringify({ enabled }),
+    });
+    const m = udModels.find((x) => x.model === model);
+    if (m) m.enabled = enabled ? 1 : 0;
+    renderUdModels();
+    loadUpstreams();
+  } catch (e) { toast(e.message, false); }
+}
+$('udAddModel').onclick = async () => {
+  const m = $('udNewModel').value.trim();
+  if (!m) return toast('اكتب اسم النموذج', false);
+  if (udModels.some((x) => x.model === m)) return toast('النموذج موجود بالفعل', false);
+  try {
+    const list = udModels.map((x) => x.model).concat(m);
+    const kept = await api('/upstreams/' + udId + '/models', { method: 'PUT', body: JSON.stringify({ models: list }) });
+    udModels = kept;
+    $('udNewModel').value = '';
+    renderUdModels(); loadUpstreams();
+  } catch (e) { toast(e.message, false); }
 };
+$('udFetch').onclick = () => udId && fetchModels(udId);
+$('udDiscover').onclick = () => udId && discoverModels(udId);
 
-function next() { if (offset + limit < total) { offset += limit; loadKeys(); } }
-function prev() { if (offset > 0) { offset = Math.max(0, offset - limit); loadKeys(); } }
-$('prevBtn').onclick = prev; $('nextBtn').onclick = next;
+// ── usage guide ──
+$('usageBtn').onclick = async () => {
+  const base = location.origin;
+  document.querySelectorAll('.us-base').forEach((el) => { el.textContent = base; });
+  $('usBaseUrl').value = base + '/v1';
+  $('usCurl').value =
+    `curl ${base}/v1/chat/completions \\\n` +
+    `  -H "Authorization: Bearer $GATEWAY_TOKEN" \\\n` +
+    `  -H "Content-Type: application/json" \\\n` +
+    `  -d '{\n` +
+    `    "model": "gpt-4o",\n` +
+    `    "messages": [{"role": "user", "content": "مرحباً!"}]\n` +
+    `  }'`;
+  try {
+    const info = await fetch(base + '/').then((r) => r.json());
+    if (info.gatewayAuth) {
+      $('usAuthWarn').style.display = 'none';
+      $('usTokenState').textContent = '— مفعّل الآن. التوكن في متغير البيئة GATEWAY_TOKEN';
+    } else {
+      $('usAuthWarn').style.display = 'block';
+      $('usAuthWarn').textContent = '⚠️ البوابة مفتوحة بدون حماية! اضبط متغير البيئة GATEWAY_TOKEN في إعدادات الموقع (Render) لحماية مفتاحك.';
+      $('usTokenState').textContent = '— ⚠️ غير مفعّل حالياً (مفتوح للجميع)';
+    }
+  } catch (e) { /* root may be gated; show generic hint */ }
+  openModal('usageModal');
+};
+$('udDiscover').onclick = () => udId && discoverModels(udId);
+$('udFilter').addEventListener('input', renderUdAvailable);
+$('udSelectAll').onchange = (e) => {
+  document.querySelectorAll('#udAvailable .av-chk').forEach((c) => { c.checked = e.target.checked; });
+};
+$('udSaveSelection').onclick = saveUdSelection;
 
-let debounce;
-$('q').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => { offset = 0; q = $('q').value.trim(); loadKeys(); }, 300); });
-$('status').addEventListener('change', () => { offset = 0; status = $('status').value; loadKeys(); });
-$('addBtn').onclick = openAdd;
-$('reloadBtn').onclick = () => { loadStats(); loadKeys(); };
+// discovery: fetch upstream /v1/models, show checkboxes, save only the chosen ones
+let udAvailable = [];
+async function discoverModels(id) {
+  toast('جارٍ اكتشاف النماذج من الخادم…');
+  try {
+    const d = await api('/upstreams/' + id + '/models/available');
+    udAvailable = d.models || [];
+    $('udFilter').value = '';
+    $('udSelectAll').checked = false;
+    renderUdAvailable();
+    $('udDiscoverPanel').style.display = 'block';
+    toast(`🔎 عُثر على ${d.fetched} نموذج — حدّد ما تريد تفعيله`);
+  } catch (e) { toast(e.message, false); }
+}
+function renderUdAvailable() {
+  const f = ($('udFilter').value || '').trim().toLowerCase();
+  const list = udAvailable.filter((m) => !f || m.id.toLowerCase().includes(f));
+  $('udAvailable').innerHTML = list.length ? list.map((m) =>
+    `<label title="${esc(m.id)}" style="display:flex;gap:7px;align-items:center;padding:3px 6px;border-radius:6px;cursor:pointer;direction:ltr">
+       <input type="checkbox" class="av-chk" value="${esc(m.id)}" ${m.whitelisted ? 'checked' : ''} style="margin:0">
+       <span style="${m.whitelisted ? '' : 'color:var(--muted)'}">${esc(m.id)}</span>
+       ${m.enabled ? '<span class="tag active" style="flex:0 0 auto">مفعّل</span>' : ''}
+     </label>`).join('')
+    : '<div class="muted" style="padding:8px">لا تطابق. غيّر التصفية.</div>';
+}
+async function saveUdSelection() {
+  const selected = [...document.querySelectorAll('#udAvailable .av-chk:checked')].map((c) => c.value);
+  if (!selected.length) {
+    if (!confirm('لم تحدد أي نموذج — ستفرّغ القائمة البيضاء لهذا الخادم. متابعة؟')) return;
+  }
+  // keep manual whitelist entries that the upstream didn't return
+  const discovered = new Set(udAvailable.map((m) => m.id));
+  const keep = udModels.filter((m) => !discovered.has(m.model)).map((m) => m.model);
+  try {
+    toast('جارٍ الحفظ…');
+    udModels = await api('/upstreams/' + udId + '/models', {
+      method: 'PUT', body: JSON.stringify({ models: keep.concat(selected) }),
+    });
+    renderUdModels(); loadUpstreams();
+    $('udDiscoverPanel').style.display = 'none';
+    toast('💾 تم حفظ القائمة البيضاء');
+  } catch (e) { toast(e.message, false); }
+}
+
+// ── filters / pager / sorting ──
+$('q').addEventListener('input', () => { q = $('q').value.trim(); offset = 0; loadKeys(); });
+$('status').addEventListener('change', () => { status = $('status').value; offset = 0; loadKeys(); });
+$('fUpstream').addEventListener('change', () => { fUpstream = $('fUpstream').value; offset = 0; loadKeys(); });
+$('prevBtn').onclick = () => { if (offset >= limit) { offset -= limit; loadKeys(); } };
+$('nextBtn').onclick = () => { if (offset + keys.length < total) { offset += limit; loadKeys(); } };
 
 document.querySelectorAll('th[data-k]').forEach((th) => th.addEventListener('click', () => {
-  const k = th.dataset.k;
-  sortKeys(k);
+  sortKeys(th.dataset.k);
 }));
 function sortKeys(k) {
   if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = 1; }
@@ -411,17 +830,30 @@ function sortKeys(k) {
   renderRows();
 }
 
+$('addBtn').onclick = () => { $('addText').value = ''; openModal('addModal'); $('addText').focus(); };
+$('addUpBtn').onclick = openAddUp;
+$('reloadBtn').onclick = () => { loadStats(); loadKeys(); };
+$('reloadUpsBtn').onclick = () => loadUpstreams();
+$('resetAllBtn').onclick = async () => {
+  if (!confirm('تصفير استهلاك كل المفاتيح؟')) return;
+  try {
+    await api('/reset-all', { method: 'POST' });
+    toast('تم تصفير الاستهلاك'); loadStats(); loadKeys();
+  } catch (e) { toast(e.message, false); }
+};
+
 $('saveToken').onclick = () => {
   token = $('token').value.trim();
   localStorage.setItem(TOKEN_KEY, token);
-  loadStats(); loadKeys();
+  loadStats(); loadKeys(); loadUpstreams();
 };
 
 // auto-login if a token was stored
-if (token) loadStats();
+if (token) { loadStats(); loadUpstreams(); }
 
 // initial paint (no token yet → show placeholders)
 loadKeys().catch(() => {});
+loadUpstreams().catch(() => {});
 </script>
 </body>
 </html>
