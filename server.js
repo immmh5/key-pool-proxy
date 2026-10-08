@@ -58,6 +58,18 @@ app.use('/v1', (req, res, next) => {
 app.use(express.json({ limit: '1mb' }));
 app.use(express.text({ type: 'text/plain', limit: '1mb' }));
 
+// Many OpenAI-compatible clients probe both `/models` and `/v1/models`
+// (and `/chat/completions` vs `/v1/chat/completions`) to autodetect the base
+// URL. Without these aliases the bare-path probe 404s, so the client reports
+// "no models" even though the proxy is healthy. Rewriting the path to /v1/*
+// makes the surface work either way.
+app.use((req, res, next) => {
+  if (!req.url.startsWith('/v1') && !req.url.startsWith('/admin')) {
+    req.url = '/v1' + req.url;
+  }
+  next();
+});
+
 // ── helpers ────────────────────────────────────────────────────────
 function publicRow(r) {
   if (!r) return null;
