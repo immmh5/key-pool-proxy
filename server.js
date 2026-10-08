@@ -639,8 +639,18 @@ admin.post('/test', async (req, res) => {
   const key = (req.body?.key || '').trim();
   if (!id && !key) return res.status(400).json({ error: 'provide {id} or {key}' });
   let target = null;
+  // Prefer the upstream named in the request; otherwise fall back to the
+  // upstream the key is actually assigned to. Only when neither is available
+  // do we guess with the first enabled upstream — otherwise testing a key
+  // that belongs to upstream B sends it to upstream A, which reports a
+  // misleading 401 ("Incorrect API key … platform.openai.com").
   if (upstreamId) {
     const u = db.getUpstream(upstreamId);
+    if (u) target = u.base_url;
+  }
+  if (!target && id) {
+    const row = db.getRow(id);
+    const u = row && row.upstream_id ? db.getUpstream(row.upstream_id) : null;
     if (u) target = u.base_url;
   }
   if (!target) target = (db.listUpstreams().find((u) => u.enabled) || {}).base_url;
